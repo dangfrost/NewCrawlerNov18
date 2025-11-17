@@ -41,15 +41,11 @@ Deno.serve(async (req) => {
 
     console.log('Starting migration for user:', user.email);
 
+    // Simpler connection configuration that works better with NeonDB
     client = postgres(connectionString, { 
-      ssl: { rejectUnauthorized: false },
       max: 1,
-      connect_timeout: 60,
-      idle_timeout: 60,
-      max_lifetime: 300,
-      connection: {
-        application_name: 'base44_migration'
-      }
+      idle_timeout: 20,
+      connect_timeout: 10
     });
     
     const db = drizzle(client);
