@@ -1,27 +1,50 @@
 import React, { useState } from 'react';
 import { dbMigrate } from '@/functions/dbMigrate';
+import { testDbConnection } from '@/functions/testDbConnection';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { CheckCircle, XCircle, Loader2, Database, AlertTriangle } from 'lucide-react';
+import { CheckCircle, XCircle, Loader2, Database, AlertTriangle, TestTube } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 
 export default function MigrationSetup() {
     const [isRunning, setIsRunning] = useState(false);
+    const [isTesting, setIsTesting] = useState(false);
     const [result, setResult] = useState(null);
+    const [testResult, setTestResult] = useState(null);
     const [error, setError] = useState(null);
-    const [debugInfo, setDebugInfo] = useState(null);
+
+    const testConnection = async () => {
+        setIsTesting(true);
+        setTestResult(null);
+        setError(null);
+
+        try {
+            const { data, error: fnError } = await testDbConnection({});
+            
+            if (fnError) {
+                throw new Error(fnError.message || 'Connection test failed');
+            }
+            
+            if (data.error) {
+                throw new Error(data.error);
+            }
+            
+            setTestResult(data);
+        } catch (err) {
+            console.error('Connection test error:', err);
+            setError(err.message || 'Failed to test connection');
+        } finally {
+            setIsTesting(false);
+        }
+    };
 
     const runMigration = async () => {
         setIsRunning(true);
         setResult(null);
         setError(null);
-        setDebugInfo(null);
 
         try {
             const { data, error: fnError } = await dbMigrate({});
-            
-            console.log('Full response:', { data, error: fnError });
-            setDebugInfo(JSON.stringify({ data, error: fnError }, null, 2));
             
             if (fnError) {
                 throw new Error(fnError.message || 'Migration failed');
@@ -58,6 +81,54 @@ export default function MigrationSetup() {
                         </ul>
                     </AlertDescription>
                 </Alert>
+
+                <Card className="bg-white/70 backdrop-blur-sm">
+                    <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                            <TestTube className="w-6 h-6 text-purple-600" />
+                            Test Database Connection
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                        <p className="text-slate-600">
+                            Run this first to diagnose connection issues and find the best SSL configuration.
+                        </p>
+
+                        <Button 
+                            onClick={testConnection} 
+                            disabled={isTesting}
+                            className="w-full bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700"
+                        >
+                            {isTesting ? (
+                                <>
+                                    <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                                    Testing Connection...
+                                </>
+                            ) : (
+                                <>
+                                    <TestTube className="w-5 h-5 mr-2" />
+                                    Test Connection
+                                </>
+                            )}
+                        </Button>
+
+                        {testResult && testResult.success && (
+                            <Alert className="bg-green-50 border-green-200">
+                                <CheckCircle className="h-4 w-4 text-green-600" />
+                                <AlertDescription className="text-green-800">
+                                    <strong>Connection Test Results:</strong>
+                                    <div className="mt-2 space-y-2">
+                                        <p className="font-semibold">{testResult.recommendation}</p>
+                                        <details className="text-xs bg-green-100 p-2 rounded">
+                                            <summary className="cursor-pointer font-semibold">View Details</summary>
+                                            <pre className="mt-2 overflow-auto">{JSON.stringify(testResult, null, 2)}</pre>
+                                        </details>
+                                    </div>
+                                </AlertDescription>
+                            </Alert>
+                        )}
+                    </CardContent>
+                </Card>
 
                 <Card className="bg-white/70 backdrop-blur-sm">
                     <CardHeader>
@@ -111,13 +182,6 @@ export default function MigrationSetup() {
                                     <pre className="mt-2 text-xs whitespace-pre-wrap">{error}</pre>
                                 </AlertDescription>
                             </Alert>
-                        )}
-
-                        {debugInfo && (
-                            <details className="bg-slate-900 text-slate-100 p-4 rounded text-xs">
-                                <summary className="cursor-pointer font-semibold mb-2">Debug Info</summary>
-                                <pre className="overflow-auto">{debugInfo}</pre>
-                            </details>
                         )}
                     </CardContent>
                 </Card>
