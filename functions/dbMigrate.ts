@@ -39,13 +39,24 @@ Deno.serve(async (req) => {
       connectionString = connectionString.replace(/^psql\s+['"]?/, '').replace(/['"]$/, '').trim();
     }
 
-    console.log('Starting migration for user:', user.email);
+    // Validate connection string format
+    if (!connectionString.startsWith('postgres://') && !connectionString.startsWith('postgresql://')) {
+      return Response.json({ 
+        error: 'Invalid DATABASE_URL format',
+        details: 'DATABASE_URL must start with postgres:// or postgresql://'
+      }, { status: 500 });
+    }
 
-    // Simpler connection configuration that works better with NeonDB
+    console.log('Starting migration for user:', user.email);
+    console.log('Connection string format:', connectionString.split('@')[0] + '@...');
+
+    // NeonDB-optimized connection settings
     client = postgres(connectionString, { 
+      ssl: 'require',
       max: 1,
       idle_timeout: 20,
-      connect_timeout: 10
+      connect_timeout: 30,
+      prepare: false
     });
     
     const db = drizzle(client);
