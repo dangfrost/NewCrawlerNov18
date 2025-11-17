@@ -3,7 +3,6 @@ import postgres from 'npm:postgres@3.4.3';
 import * as schema from './schema.js';
 
 // Create a connection for each function invocation
-// In serverless, we can't reuse connections across invocations
 export function getDb() {
   const connectionString = Deno.env.get('DATABASE_URL');
   if (!connectionString) {
@@ -12,11 +11,12 @@ export function getDb() {
   
   try {
     const client = postgres(connectionString, {
-      ssl: 'require',
+      ssl: 'prefer',
       max: 1,
       idle_timeout: 20,
-      connect_timeout: 10,
-      prepare: false
+      connect_timeout: 30,
+      prepare: false,
+      fetch_types: false
     });
     
     const db = drizzle(client, { schema });
