@@ -36,14 +36,22 @@ Deno.serve(async (req) => {
       }, { status: 500 });
     }
 
+    // Validate connection string format
+    if (connectionString.includes('psql ') || connectionString.startsWith("'")) {
+      return Response.json({ 
+        error: 'Invalid DATABASE_URL format',
+        details: 'DATABASE_URL contains psql command prefix. Remove the "psql \'" prefix and closing "\'" from the connection string.'
+      }, { status: 500 });
+    }
+
     console.log('Starting migration for user:', user.email);
 
     client = postgres(connectionString, { 
       ssl: 'require', 
       max: 1,
-      connect_timeout: 10,
-      idle_timeout: 20,
-      max_lifetime: 60
+      connect_timeout: 30,
+      idle_timeout: 30,
+      max_lifetime: 120
     });
     const db = drizzle(client);
 
