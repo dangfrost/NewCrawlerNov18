@@ -2,26 +2,14 @@ import React, { useState } from 'react';
 import { dbMigrate } from '@/functions/dbMigrate';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { CheckCircle, XCircle, Loader2, Database, AlertTriangle, Copy } from 'lucide-react';
+import { CheckCircle, XCircle, Loader2, Database, AlertTriangle } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { useToast } from '@/components/ui/use-toast';
 
 export default function MigrationSetup() {
     const [isRunning, setIsRunning] = useState(false);
     const [result, setResult] = useState(null);
     const [error, setError] = useState(null);
     const [debugInfo, setDebugInfo] = useState(null);
-    const { toast } = useToast();
-
-    const correctUrl = "postgresql://neondb_owner:npg_mHiYOGgBX0F1@ep-fragrant-bush-ab188gf6-pooler.eu-west-2.aws.neon.tech/neondb?sslmode=require";
-
-    const copyToClipboard = () => {
-        navigator.clipboard.writeText(correctUrl);
-        toast({
-            title: "Copied!",
-            description: "Connection string copied to clipboard",
-        });
-    };
 
     const runMigration = async () => {
         setIsRunning(true);
@@ -60,34 +48,13 @@ export default function MigrationSetup() {
                     <p className="text-slate-600 text-lg">Initialize your NeonDB tables</p>
                 </div>
 
-                <Alert variant="destructive">
-                    <AlertTriangle className="h-4 w-4" />
-                    <AlertDescription>
-                        <strong>DATABASE_URL is incorrectly formatted!</strong>
-                        <p className="mt-2">Your DATABASE_URL contains <code className="bg-red-100 px-1 rounded">psql</code> command prefix.</p>
-                        <p className="mt-2">Go to Base44 Dashboard → Settings → Environment Variables and update DATABASE_URL to:</p>
-                        <div className="mt-3 bg-slate-900 text-slate-100 p-3 rounded text-xs font-mono break-all flex items-start justify-between gap-2">
-                            <span className="flex-1">{correctUrl}</span>
-                            <Button 
-                                variant="ghost" 
-                                size="sm" 
-                                onClick={copyToClipboard}
-                                className="text-slate-100 hover:text-white hover:bg-slate-800 h-6 px-2"
-                            >
-                                <Copy className="w-3 h-3" />
-                            </Button>
-                        </div>
-                        <p className="mt-2 text-sm">Remove the <code className="bg-red-100 px-1 rounded">psql '</code> at the beginning and the closing <code className="bg-red-100 px-1 rounded">'</code></p>
-                    </AlertDescription>
-                </Alert>
-
                 <Alert className="bg-blue-50 border-blue-200">
                     <AlertTriangle className="h-4 w-4 text-blue-600" />
                     <AlertDescription className="text-blue-800">
                         <strong>Requirements:</strong>
                         <ul className="list-disc list-inside mt-2 space-y-1">
                             <li>You must be logged in as an <strong>admin</strong> user</li>
-                            <li>DATABASE_URL must be configured correctly (see alert above)</li>
+                            <li>DATABASE_URL must be configured in environment variables</li>
                         </ul>
                     </AlertDescription>
                 </Alert>
