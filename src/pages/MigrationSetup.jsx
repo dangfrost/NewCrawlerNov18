@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { dbMigrate } from '@/functions/dbMigrate';
 import { testDbConnection } from '@/functions/testDbConnection';
+import { migrateData } from '@/functions/migrateData';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { CheckCircle, XCircle, Loader2, Database, AlertTriangle, TestTube } from 'lucide-react';
@@ -9,8 +10,10 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 export default function MigrationSetup() {
     const [isRunning, setIsRunning] = useState(false);
     const [isTesting, setIsTesting] = useState(false);
+    const [isMigratingData, setIsMigratingData] = useState(false);
     const [result, setResult] = useState(null);
     const [testResult, setTestResult] = useState(null);
+    const [dataResult, setDataResult] = useState(null);
     const [error, setError] = useState(null);
 
     const testConnection = async () => {
@@ -60,6 +63,31 @@ export default function MigrationSetup() {
             setError(err.message || 'Failed to run migration');
         } finally {
             setIsRunning(false);
+        }
+    };
+
+    const runDataMigration = async () => {
+        setIsMigratingData(true);
+        setDataResult(null);
+        setError(null);
+
+        try {
+            const { data, error: fnError } = await migrateData({});
+            
+            if (fnError) {
+                throw new Error(fnError.message || 'Data migration failed');
+            }
+            
+            if (data.error) {
+                throw new Error(`${data.error}${data.details ? '\n\n' + data.details : ''}`);
+            }
+            
+            setDataResult(data);
+        } catch (err) {
+            console.error('Data migration error:', err);
+            setError(err.message || 'Failed to migrate data');
+        } finally {
+            setIsMigratingData(false);
         }
     };
 
@@ -180,6 +208,56 @@ export default function MigrationSetup() {
                                 <AlertDescription>
                                     <strong>Error:</strong> 
                                     <pre className="mt-2 text-xs whitespace-pre-wrap">{error}</pre>
+                                </AlertDescription>
+                            </Alert>
+                        )}
+                    </CardContent>
+                </Card>
+
+                <Card className="bg-white/70 backdrop-blur-sm">
+                    <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                            <Database className="w-6 h-6 text-green-600" />
+                            Migrate Existing Data
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                        <p className="text-slate-600">
+                            Copy your existing data from Base44 entities to NeonDB tables:
+                        </p>
+                        <ul className="list-disc list-inside space-y-1 text-slate-700">
+                            <li>Database Instances</li>
+                            <li>Jobs</li>
+                            <li>Job Logs</li>
+                        </ul>
+
+                        <Button 
+                            onClick={runDataMigration} 
+                            disabled={isMigratingData}
+                            className="w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700"
+                        >
+                            {isMigratingData ? (
+                                <>
+                                    <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                                    Migrating Data...
+                                </>
+                            ) : (
+                                <>
+                                    <Database className="w-5 h-5 mr-2" />
+                                    Migrate Data to NeonDB
+                                </>
+                            )}
+                        </Button>
+
+                        {dataResult && dataResult.success && (
+                            <Alert className="bg-green-50 border-green-200">
+                                <CheckCircle className="h-4 w-4 text-green-600" />
+                                <AlertDescription className="text-green-800">
+                                    <strong>Success!</strong> {dataResult.message}
+                                    <details className="text-xs bg-green-100 p-2 rounded mt-2">
+                                        <summary className="cursor-pointer font-semibold">View Details</summary>
+                                        <pre className="mt-2">{JSON.stringify(dataResult, null, 2)}</pre>
+                                    </details>
                                 </AlertDescription>
                             </Alert>
                         )}
