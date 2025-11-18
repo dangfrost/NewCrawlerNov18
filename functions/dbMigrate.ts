@@ -1,6 +1,8 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.4';
-import { getDb } from './db/client.js';
-import { sql } from 'npm:drizzle-orm@0.29.3';
+import { Pool, neonConfig } from 'npm:@neondatabase/serverless@0.9.0';
+
+// Configure for Deno Deploy
+neonConfig.webSocketConstructor = WebSocket;
 
 Deno.serve(async (req) => {
   try {
@@ -25,13 +27,21 @@ Deno.serve(async (req) => {
 
     console.log('Starting migration for user:', user.email);
 
-    const db = getDb();
+    const connectionString = Deno.env.get('DATABASE_URL');
+    if (!connectionString) {
+      return Response.json({ 
+        error: 'DATABASE_URL not set',
+        details: 'Environment variable DATABASE_URL is missing'
+      }, { status: 500 });
+    }
+
+    const pool = new Pool({ connectionString });
 
     console.log('Database connection established');
 
     // Create tables
     console.log('Creating database_instances table...');
-    await db.execute(sql`
+    await pool.query(`
       CREATE TABLE IF NOT EXISTS database_instances (
         id TEXT PRIMARY KEY,
         created_date TIMESTAMP DEFAULT NOW() NOT NULL,
@@ -59,7 +69,7 @@ Deno.serve(async (req) => {
     `);
 
     console.log('Creating jobs table...');
-    await db.execute(sql`
+    await pool.query(`
       CREATE TABLE IF NOT EXISTS jobs (
         id TEXT PRIMARY KEY,
         created_date TIMESTAMP DEFAULT NOW() NOT NULL,
@@ -80,7 +90,7 @@ Deno.serve(async (req) => {
     `);
 
     console.log('Creating job_logs table...');
-    await db.execute(sql`
+    await pool.query(`
       CREATE TABLE IF NOT EXISTS job_logs (
         id TEXT PRIMARY KEY,
         created_date TIMESTAMP DEFAULT NOW() NOT NULL,
@@ -91,12 +101,14 @@ Deno.serve(async (req) => {
     `);
 
     console.log('Creating indexes...');
-    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_jobs_instance_id ON jobs(instance_id)`);
-    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status)`);
-    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_job_logs_job_id ON job_logs(job_id)`);
-    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_instances_status ON database_instances(status)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_jobs_instance_id ON jobs(instance_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_job_logs_job_id ON job_logs(job_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_instances_status ON database_instances(status)`);
 
     console.log('Migration completed successfully');
+    
+    await pool.end();
 
     return Response.json({ 
       success: true, 
