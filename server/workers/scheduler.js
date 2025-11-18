@@ -1,13 +1,14 @@
 import cron from 'node-cron';
 import { getDb } from '../db/client.js';
 import { databaseInstances, jobs } from '../db/schema.js';
-import { eq, and, gt, or, isNull } from 'drizzle-orm';
+import { eq, and, gt, or, isNull, inArray } from 'drizzle-orm';
 
 /**
- * Batch job worker for processing scheduled instances and resuming running jobs
+ * Batch job worker for processing scheduled instances and resuming jobs
  * Runs every minute to:
- * 1. Resume any running jobs (in case of timeout/restart)
- * 2. Check for instances that need processing
+ * 1. Resume running jobs (in case of timeout/restart)
+ * 2. Retry failed jobs (if they can be recovered)
+ * 3. Check for scheduled instances that need processing
  */
 
 export function startScheduler() {
@@ -16,7 +17,7 @@ export function startScheduler() {
   // Run every minute
   cron.schedule('* * * * *', async () => {
     try {
-      await resumeRunningJobs();
+      await resumeJobs();
       await processScheduledInstances();
     } catch (error) {
       console.error('Scheduler error:', error);
@@ -27,39 +28,60 @@ export function startScheduler() {
 }
 
 /**
- * Resume any jobs that are in 'running' status
- * This handles cases where jobs were interrupted by timeouts or restarts
+ * Resume jobs that are in 'running' or 'failed' status
+ * This handles cases where jobs were interrupted by timeouts/restarts or failed
  */
-async function resumeRunningJobs() {
+async function resumeJobs() {
   const db = getDb();
 
   try {
-    const runningJobs = await db
+    // Get both running and failed jobs
+    const jobsToResume = await db
       .select()
       .from(jobs)
-      .where(eq(jobs.status, 'running'));
+      .where(inArray(jobs.status, ['running', 'failed']));
 
-    if (runningJobs.length === 0) {
+    if (jobsToResume.length === 0) {
       return;
     }
 
-    console.log(`Found ${runningJobs.length} running jobs to resume`);
+    console.log(`Found ${jobsToResume.length} jobs to resume (running/failed)`);
 
     // Import processBatch dynamically to avoid circular dependency
     const { processBatch } = await import('../routes/augmentor.js');
 
-    for (const job of runningJobs) {
+    for (const job of jobsToResume) {
       // Check if job is not already being processed (is_processing_batch flag)
       if (!job.is_processing_batch) {
-        console.log(`Resuming job ${job.id}`);
+        // For failed jobs, check if they're recoverable
+        if (job.status === 'failed') {
+          // Don't retry if all records have failed
+          if (job.failed_records >= job.total_records && job.total_records > 0) {
+            console.log(`Job ${job.id} - all records failed, skipping retry`);
+            continue;
+          }
+          // Don't retry if more than 50% have failed
+          if (job.total_records > 0 && job.failed_records / job.total_records > 0.5) {
+            console.log(`Job ${job.id} - >50% failed, skipping retry`);
+            continue;
+          }
+          // Reset status to running to retry
+          await db.update(jobs)
+            .set({ status: 'running', updated_date: new Date() })
+            .where(eq(jobs.id, job.id));
+          console.log(`Retrying failed job ${job.id}`);
+        } else {
+          console.log(`Resuming running job ${job.id}`);
+        }
+
         // Don't await - let it run in background
-        processBatch(job.id).catch(err => {
+        processBatch(job.id, 0).catch(err => {
           console.error(`Error resuming job ${job.id}:`, err);
         });
       }
     }
   } catch (error) {
-    console.error('Error resuming running jobs:', error);
+    console.error('Error resuming jobs:', error);
   }
 }
 

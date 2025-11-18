@@ -335,12 +335,14 @@ router.post('/dry-run', requireAuth, async (req, res) => {
   }
 });
 
+const MAX_BATCH_RETRIES = 3;
+
 // Process a batch (called recursively) - EXPORTED for scheduler
-export async function processBatch(jobId) {
+export async function processBatch(jobId, currentRetry = 0) {
   const db = getDb();
 
   try {
-    console.log(`[Batch] Processing job ${jobId}`);
+    console.log(`[Batch] Processing job ${jobId} (retry ${currentRetry}/${MAX_BATCH_RETRIES})`);
 
     // Get job
     const [job] = await db.select().from(jobs).where(eq(jobs.id, jobId));
@@ -481,7 +483,23 @@ export async function processBatch(jobId) {
       await addLog(`AI processing completed for ${aiResponses.length} records`);
 
     } catch (batchError) {
-      await addLog(`Batch AI processing failed: ${batchError.message}. Skipping this batch.`, 'ERROR');
+      // Retry batch processing if we haven't hit max retries
+      if (currentRetry < MAX_BATCH_RETRIES) {
+        await addLog(`Batch AI processing failed: ${batchError.message}. Retrying (${currentRetry + 1}/${MAX_BATCH_RETRIES})...`, 'ERROR');
+
+        await db.update(jobs).set({
+          is_processing_batch: false, // Clear flag for retry
+          updated_date: new Date()
+        }).where(eq(jobs.id, jobId));
+
+        // Retry with exponential backoff: 2s, 4s, 8s
+        const retryDelay = Math.pow(2, currentRetry + 1) * 1000;
+        setTimeout(() => processBatch(jobId, currentRetry + 1), retryDelay);
+        return;
+      }
+
+      // Max retries exceeded - skip this batch
+      await addLog(`Batch AI processing failed after ${MAX_BATCH_RETRIES} attempts: ${batchError.message}. Skipping batch.`, 'ERROR');
 
       const newOffset = job.current_batch_offset + records.length;
       const newFailedRecords = job.failed_records + records.length;
@@ -494,9 +512,9 @@ export async function processBatch(jobId) {
         updated_date: new Date()
       }).where(eq(jobs.id, jobId));
 
-      // Continue immediately with setTimeout, scheduler will catch it if this fails
-      await addLog('Batch skipped - continuing to next batch');
-      setTimeout(() => processBatch(jobId), 1000);
+      // Continue to next batch (reset retry counter)
+      await addLog('Moving to next batch');
+      setTimeout(() => processBatch(jobId, 0), 1000);
       return;
     }
 
@@ -553,7 +571,11 @@ export async function processBatch(jobId) {
           updatedContent = originalContent.replace(tagRegex, `[pagecontent]${processedContent}[/pagecontent]`);
         }
 
-        const updatedRecord = { ...record, [instance.target_field]: updatedContent };
+        const updatedRecord = {
+          ...record,
+          [instance.target_field]: updatedContent,
+          changed_flag: 'done' // Mark as processed so it won't be picked up again
+        };
 
         // Add pre-generated embedding
         if (instance.vector_field_name) {
@@ -612,9 +634,9 @@ export async function processBatch(jobId) {
 
     await addLog(`Batch complete: ${successCount} succeeded, ${failCount} failed`);
 
-    // Continue immediately with setTimeout (fast)
+    // Continue immediately with setTimeout (fast), reset retry counter for next batch
     // If setTimeout is lost (timeout/restart), scheduler will resume within 60s (reliable)
-    setTimeout(() => processBatch(jobId), 1000);
+    setTimeout(() => processBatch(jobId, 0), 1000);
 
   } catch (error) {
     console.error(`[Batch] Job ${jobId} processing error:`, error);
