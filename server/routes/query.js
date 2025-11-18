@@ -78,6 +78,8 @@ router.post('/', requireAuth, async (req, res) => {
     responseText = responseText.replace(/"id":\s*(\d{15,})/g, '"id":"$1"');
     const zillizData = JSON.parse(responseText);
 
+    console.log('Zilliz raw response:', JSON.stringify(zillizData, null, 2));
+
     const results = zillizData.data || [];
 
     console.log(`Found ${results.length} results`);
