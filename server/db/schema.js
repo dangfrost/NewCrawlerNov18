@@ -1,0 +1,58 @@
+import { pgTable, text, timestamp, integer, boolean } from 'drizzle-orm/pg-core';
+
+// DatabaseInstance table
+export const databaseInstances = pgTable('database_instances', {
+  id: text('id').primaryKey(),
+  created_date: timestamp('created_date').defaultNow().notNull(),
+  updated_date: timestamp('updated_date').defaultNow().notNull(),
+  created_by: text('created_by'),
+
+  instance_type: text('instance_type').notNull().default('augmentor'), // 'augmentor' | 'query'
+  name: text('name').notNull(),
+  description: text('description'),
+  zilliz_endpoint: text('zilliz_endpoint').notNull(),
+  zilliz_token: text('zilliz_token').notNull(),
+  collection_name: text('collection_name').notNull(),
+  embedding_model_name: text('embedding_model_name').default('text-embedding-3-large'),
+  primary_key_field: text('primary_key_field').default('id'),
+  query_filter: text('query_filter'),
+  target_field: text('target_field'),
+  vector_field_name: text('vector_field_name'),
+  ai_operation: text('ai_operation'), // 'strip_english' | 'translate' | 'extract_entities' | 'summarize' | 'custom'
+  prompt: text('prompt'),
+  generative_model_name: text('generative_model_name').default('gpt-4o'),
+  status: text('status').notNull().default('active'), // 'active' | 'paused' | 'error'
+  schedule_interval: integer('schedule_interval').default(0),
+  last_run: timestamp('last_run'),
+  top_k: integer('top_k').default(5),
+});
+
+// Job table
+export const jobs = pgTable('jobs', {
+  id: text('id').primaryKey(),
+  created_date: timestamp('created_date').defaultNow().notNull(),
+  updated_date: timestamp('updated_date').defaultNow().notNull(),
+  created_by: text('created_by'),
+
+  instance_id: text('instance_id').notNull(),
+  status: text('status').notNull().default('pending'), // 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'
+  execution_type: text('execution_type').notNull().default('full_execution'), // 'full_execution' | 'dry_run'
+  started_at: timestamp('started_at'),
+  last_batch_at: timestamp('last_batch_at'),
+  current_batch_offset: integer('current_batch_offset').default(0),
+  total_records: integer('total_records').default(0),
+  processed_records: integer('processed_records').default(0),
+  failed_records: integer('failed_records').default(0),
+  is_processing_batch: boolean('is_processing_batch').default(false),
+  details: text('details'),
+});
+
+// JobLog table
+export const jobLogs = pgTable('job_logs', {
+  id: text('id').primaryKey(),
+  created_date: timestamp('created_date').defaultNow().notNull(),
+
+  job_id: text('job_id').notNull(),
+  level: text('level').notNull().default('INFO'), // 'INFO' | 'ERROR'
+  message: text('message').notNull(),
+});
