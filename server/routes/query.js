@@ -49,7 +49,7 @@ router.post('/', requireAuth, async (req, res) => {
     const zillizUrl = `${instance.zilliz_endpoint}/v2/vectordb/entities/search`;
     const queryPayload = {
       collectionName: instance.collection_name,
-      vector: searchVector,
+      data: [searchVector],  // Zilliz v2 API expects vectors in a data array
       limit: instance.top_k || 5,
       outputFields: ['*']
     };
@@ -92,7 +92,8 @@ router.post('/', requireAuth, async (req, res) => {
           zilliz_query: {
             collectionName: queryPayload.collectionName,
             limit: queryPayload.limit,
-            outputFields: queryPayload.outputFields
+            outputFields: queryPayload.outputFields,
+            vectorCount: queryPayload.data.length
           },
           embedding_vector_length: searchVector.length,
           zilliz_response_code: zillizResponse.status
