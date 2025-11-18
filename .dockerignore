@@ -1,0 +1,16 @@
+node_modules
+npm-debug.log
+.env
+.env.*
+.git
+.gitignore
+README.md
+QUICKSTART.md
+RAILWAY_DEPLOYMENT.md
+CODE_REVIEW.md
+.vscode
+.idea
+*.md
+dist
+functions
+.DS_Store
