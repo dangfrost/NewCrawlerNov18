@@ -12,10 +12,22 @@ const __dirname = dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Start batch job scheduler
-if (process.env.ENABLE_SCHEDULER !== 'false') {
-  startScheduler();
+// Debug: Log all environment variables (excluding secrets)
+console.log('=== Environment Check ===');
+console.log('NODE_ENV:', process.env.NODE_ENV);
+console.log('PORT:', process.env.PORT);
+console.log('DATABASE_URL exists:', !!process.env.DATABASE_URL);
+if (process.env.DATABASE_URL) {
+  console.log('DATABASE_URL length:', process.env.DATABASE_URL.length);
+  console.log('DATABASE_URL starts with:', process.env.DATABASE_URL.substring(0, 15));
 }
+console.log('========================');
+
+// Start batch job scheduler - TEMPORARILY DISABLED FOR DEBUGGING
+// if (process.env.ENABLE_SCHEDULER !== 'false') {
+//   startScheduler();
+// }
+console.log('Scheduler disabled for debugging');
 
 // Middleware
 app.use(cors());
@@ -35,6 +47,34 @@ app.use('/api/jobs', jobsRouter);
 // Health check
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// Database connection test endpoint
+app.get('/api/test-db', async (req, res) => {
+  try {
+    console.log('Testing database connection...');
+    console.log('DATABASE_URL is set:', !!process.env.DATABASE_URL);
+
+    const { getDb } = await import('./db/client.js');
+    const db = getDb();
+
+    // Try a simple query
+    const { databaseInstances } = await import('./db/schema.js');
+    const instances = await db.select().from(databaseInstances).limit(1);
+
+    res.json({
+      success: true,
+      message: 'Database connection successful',
+      instanceCount: instances.length
+    });
+  } catch (error) {
+    console.error('Database test error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      stack: error.stack
+    });
+  }
 });
 
 // Serve static files from Vite build (for production)
