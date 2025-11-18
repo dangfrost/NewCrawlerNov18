@@ -1,7 +1,7 @@
 import cron from 'node-cron';
 import { getDb } from '../db/client.js';
 import { databaseInstances } from '../db/schema.js';
-import { eq, and, lte, or, isNull } from 'drizzle-orm';
+import { eq, and, gt, or, isNull } from 'drizzle-orm';
 
 /**
  * Batch job worker for processing scheduled instances
@@ -36,7 +36,7 @@ async function processScheduledInstances() {
       .where(
         and(
           eq(databaseInstances.status, 'active'),
-          lte(databaseInstances.schedule_interval, 0)
+          gt(databaseInstances.schedule_interval, 0)
         )
       );
 
