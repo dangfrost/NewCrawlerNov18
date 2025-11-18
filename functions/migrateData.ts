@@ -36,6 +36,17 @@ Deno.serve(async (req) => {
     const jobLogs = await base44.asServiceRole.entities.JobLog.list();
 
     console.log(`Found: ${instances.length} instances, ${jobs.length} jobs, ${jobLogs.length} logs`);
+    
+    // Return early if no data to migrate
+    if (instances.length === 0 && jobs.length === 0 && jobLogs.length === 0) {
+      await pool.end();
+      return Response.json({
+        success: true,
+        message: 'No data found in Base44 entities to migrate. Your Base44 entities are empty.',
+        found: { instances: 0, jobs: 0, logs: 0 },
+        migrated: { instances: 0, jobs: 0, logs: 0 }
+      });
+    }
 
     let migratedInstances = 0;
     let migratedJobs = 0;
