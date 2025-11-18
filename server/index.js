@@ -4,6 +4,7 @@ import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import instancesRouter from './routes/instances.js';
 import jobsRouter from './routes/jobs.js';
+import queryRouter from './routes/query.js';
 import { startScheduler } from './workers/scheduler.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -31,6 +32,7 @@ app.use((req, res, next) => {
 // API Routes
 app.use('/api/instances', instancesRouter);
 app.use('/api/jobs', jobsRouter);
+app.use('/api/query', queryRouter);
 
 // Health check
 app.get('/health', (req, res) => {

@@ -187,12 +187,29 @@ export default function QueryRunner() {
         setDebugData(null); // Clear previous debug data
 
         try {
-            // TODO: Implement this API endpoint in Express
-            throw new Error("Query runner feature needs to be migrated to the new API. Please use Base44 for now.");
+            // Call the new Express API endpoint
+            const response = await fetch(`${window.location.origin}/api/query`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${localStorage.getItem('base44_access_token') || 'placeholder-token'}`
+                },
+                body: JSON.stringify({
+                    instance_id: instance.id,
+                    search_term: searchTerm
+                })
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || 'Query failed');
+            }
+
+            const responseData = await response.json();
 
             // Store raw response for debugging
             setDebugData({
-                rawResponse: response,
+                rawResponse: responseData,
                 searchTerm: searchTerm,
                 instanceConfig: {
                     id: instance.id,
@@ -202,24 +219,15 @@ export default function QueryRunner() {
                     top_k: instance.top_k,
                     zilliz_endpoint: instance.zilliz_endpoint
                 },
-                zillizQuery: response.data?.debug_info?.zilliz_query,
-                zillizUrl: response.data?.debug_info?.zilliz_url,
-                embeddingVectorLength: response.data?.debug_info?.embedding_vector_length,
-                zillizResponseCode: response.data?.debug_info?.zilliz_response_code,
+                zillizQuery: responseData.data?.debug_info?.zilliz_query,
+                zillizUrl: responseData.data?.debug_info?.zilliz_url,
+                embeddingVectorLength: responseData.data?.debug_info?.embedding_vector_length,
+                zillizResponseCode: responseData.data?.debug_info?.zilliz_response_code,
                 timestamp: new Date().toISOString()
             });
 
-            // The 'error' object is nested inside the response data from the backend function
-            if (response.data && response.data.error) {
-                throw new Error(response.data.error);
-            }
-
-            if (response.error) { // This handles network-level errors
-                 throw new Error(response.error.message);
-            }
-            
             // Correctly extract the results array from the response data.
-            const resultsData = response.data?.results || []; 
+            const resultsData = responseData.data?.results || [];
             setResults(Array.isArray(resultsData) ? resultsData : []);
 
         } catch (e) {
