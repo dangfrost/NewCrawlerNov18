@@ -223,13 +223,8 @@ export default function MigrationSetup() {
                     </CardHeader>
                     <CardContent className="space-y-4">
                         <p className="text-slate-600">
-                            Copy your existing data from Base44 entities to NeonDB tables:
+                            Copy existing Database Instances from Base44 entities to NeonDB:
                         </p>
-                        <ul className="list-disc list-inside space-y-1 text-slate-700">
-                            <li>Database Instances</li>
-                            <li>Jobs</li>
-                            <li>Job Logs</li>
-                        </ul>
 
                         <Button 
                             onClick={runDataMigration} 

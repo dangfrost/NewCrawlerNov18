@@ -29,18 +29,13 @@ Deno.serve(async (req) => {
 
     const pool = new Pool({ connectionString });
 
-    // Fetch all data from Base44 entities
-    console.log('Fetching data from Base44 entities...');
+    // Fetch instances from Base44 entities
+    console.log('Fetching instances from Base44 entities...');
     const instances = await base44.asServiceRole.entities.DatabaseInstance.list();
-    const jobs = await base44.asServiceRole.entities.Job.list();
-    const jobLogs = await base44.asServiceRole.entities.JobLog.list();
 
-    console.log(`Found: ${instances.length} instances, ${jobs.length} jobs, ${jobLogs.length} logs`);
-    console.log('Sample instance:', instances[0]);
+    console.log(`Found: ${instances.length} instances`);
 
     let migratedInstances = 0;
-    let migratedJobs = 0;
-    let migratedLogs = 0;
     const errors = [];
 
     // Migrate instances
@@ -81,75 +76,20 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Migrate jobs
-    for (const job of jobs) {
-      try {
-        console.log(`Migrating job: ${job.id}`);
-        const result = await pool.query(
-          `INSERT INTO jobs (
-            id, created_date, updated_date, created_by,
-            instance_id, status, execution_type, started_at, last_batch_at,
-            current_batch_offset, total_records, processed_records,
-            failed_records, is_processing_batch, details
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
-          ON CONFLICT (id) DO UPDATE SET
-            status = EXCLUDED.status,
-            updated_date = EXCLUDED.updated_date`,
-          [
-            job.id, job.created_date, job.updated_date, job.created_by,
-            job.instance_id, job.status || 'pending',
-            job.execution_type || 'full_execution', job.started_at, job.last_batch_at,
-            job.current_batch_offset || 0, job.total_records || 0,
-            job.processed_records || 0, job.failed_records || 0,
-            job.is_processing_batch || false, job.details
-          ]
-        );
-        console.log(`Job ${job.id} migrated, rows affected: ${result.rowCount}`);
-        migratedJobs++;
-      } catch (err) {
-        const errorMsg = `Failed to migrate job ${job.id}: ${err.message}`;
-        console.error(errorMsg);
-        errors.push(errorMsg);
-      }
-    }
-
-    // Migrate job logs
-    for (const log of jobLogs) {
-      try {
-        const result = await pool.query(
-          `INSERT INTO job_logs (
-            id, created_date, job_id, level, message
-          ) VALUES ($1, $2, $3, $4, $5)
-          ON CONFLICT (id) DO UPDATE SET
-            message = EXCLUDED.message`,
-          [log.id, log.created_date, log.job_id, log.level || 'INFO', log.message]
-        );
-        migratedLogs++;
-      } catch (err) {
-        const errorMsg = `Failed to migrate log ${log.id}: ${err.message}`;
-        console.error(errorMsg);
-        errors.push(errorMsg);
-      }
-    }
-
     await pool.end();
 
-    console.log('Data migration completed');
+    console.log('Instance migration completed');
 
     return Response.json({ 
       success: true, 
       message: errors.length > 0 
         ? `Migration completed with ${errors.length} errors. Check logs for details.`
-        : 'Data migrated successfully to NeonDB!',
+        : 'Instances migrated successfully to NeonDB!',
       migrated: {
-        instances: migratedInstances,
-        jobs: migratedJobs,
-        logs: migratedLogs
+        instances: migratedInstances
       },
       found: {
-        instances: instances.length,
-        jobs: jobs.length,
-        logs: jobLogs.length
+        instances: instances.length
       },
       errors: errors.length > 0 ? errors : undefined
     });
