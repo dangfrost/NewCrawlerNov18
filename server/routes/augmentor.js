@@ -45,30 +45,50 @@ async function withTimeout(promise, timeoutMs, errorMessage) {
 async function callAIService(modelName, messages, temperature = 0.3) {
   if (modelName.startsWith('gemini-')) {
     // Use Google Gemini
-    const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
-    const model = genAI.getGenerativeModel({ model: modelName });
+    if (!process.env.GOOGLE_API_KEY) {
+      throw new Error('GOOGLE_API_KEY environment variable is not configured. Please add it to your Railway environment variables to use Gemini models.');
+    }
 
-    // Convert OpenAI message format to Gemini format
-    // Gemini uses a simpler format - just concatenate messages
-    const prompt = messages.map(msg => {
-      if (msg.role === 'system') return `Instructions: ${msg.content}`;
-      return msg.content;
-    }).join('\n\n');
+    try {
+      const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
+      const model = genAI.getGenerativeModel({ model: modelName });
 
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
-    const text = response.text();
+      // Convert OpenAI message format to Gemini format
+      // Gemini uses a simpler format - just concatenate messages
+      const prompt = messages.map(msg => {
+        if (msg.role === 'system') return `Instructions: ${msg.content}`;
+        return msg.content;
+      }).join('\n\n');
 
-    // Return in OpenAI-compatible format
-    return {
-      choices: [{
-        message: {
-          content: text
-        }
-      }]
-    };
+      const result = await model.generateContent(prompt);
+      const response = await result.response;
+      const text = response.text();
+
+      // Return in OpenAI-compatible format
+      return {
+        choices: [{
+          message: {
+            content: text
+          }
+        }]
+      };
+    } catch (error) {
+      // Provide clearer error messages for common Gemini API errors
+      if (error.message?.includes('API key not valid') || error.message?.includes('API_KEY_INVALID')) {
+        throw new Error('Google API key is invalid. Please check your GOOGLE_API_KEY in Railway environment variables and redeploy the application.');
+      }
+      if (error.message?.includes('quota') || error.message?.includes('QUOTA')) {
+        throw new Error('Google AI API quota exceeded. Please check your Google AI Studio quota limits.');
+      }
+      // Re-throw with original message if not a known error
+      throw new Error(`Gemini API error: ${error.message}`);
+    }
   } else {
     // Use OpenAI
+    if (!process.env.OPENAI_API_KEY) {
+      throw new Error('OPENAI_API_KEY environment variable is not configured. Please add it to your Railway environment variables to use OpenAI models.');
+    }
+
     const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
     return await openai.chat.completions.create({
       model: modelName,
