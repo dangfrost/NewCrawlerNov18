@@ -61,6 +61,9 @@ async function callAIService(modelName, messages, temperature = 0.3) {
         return msg.content;
       }).join('\n\n');
 
+      // Log prompt details for debugging
+      console.log(`[Gemini] Prompt size: ${prompt.length} chars, Preview: ${prompt.substring(0, 200)}...`);
+
       const result = await model.generateContent(prompt);
       const response = await result.response;
       const text = response.text();
@@ -74,6 +77,12 @@ async function callAIService(modelName, messages, temperature = 0.3) {
         }]
       };
     } catch (error) {
+      // Log full error details for debugging
+      console.error('[Gemini] Full error object:', JSON.stringify(error, null, 2));
+      console.error('[Gemini] Error name:', error.name);
+      console.error('[Gemini] Error message:', error.message);
+      console.error('[Gemini] Error stack:', error.stack);
+
       // Provide clearer error messages for common Gemini API errors
       if (error.message?.includes('API key not valid') || error.message?.includes('API_KEY_INVALID')) {
         throw new Error('Google API key is invalid. Please check your GOOGLE_API_KEY in Railway environment variables and redeploy the application.');
@@ -81,8 +90,14 @@ async function callAIService(modelName, messages, temperature = 0.3) {
       if (error.message?.includes('quota') || error.message?.includes('QUOTA')) {
         throw new Error('Google AI API quota exceeded. Please check your Google AI Studio quota limits.');
       }
-      // Re-throw with original message if not a known error
-      throw new Error(`Gemini API error: ${error.message}`);
+      if (error.message?.includes('SAFETY') || error.message?.includes('safety')) {
+        throw new Error(`Gemini safety filter triggered: ${error.message}`);
+      }
+      if (error.message?.includes('RECITATION') || error.message?.includes('recitation')) {
+        throw new Error(`Gemini recitation check failed (content may be copyrighted): ${error.message}`);
+      }
+      // Re-throw with full details
+      throw new Error(`Gemini API error: ${error.message} (${error.name || 'unknown error type'})`);
     }
   } else {
     // Use OpenAI
@@ -453,6 +468,13 @@ export async function processBatch(jobId, currentRetry = 0) {
 
     const combinedPrompt = batchPrompts.join('\n\n---\n\n');
 
+    // Log detailed content info for debugging
+    const contentSizes = records.map((record, idx) => {
+      const content = record[instance.target_field] || '';
+      return `R${idx + 1}:${content.length}ch`;
+    });
+    await addLog(`Content sizes: [${contentSizes.join(', ')}], Combined: ${combinedPrompt.length} chars`);
+    await addLog(`Content preview: ${combinedPrompt.substring(0, 200)}...`);
     await addLog(`Sending batch to ${instance.generative_model_name} for processing...`);
 
     let aiResponses = [];
