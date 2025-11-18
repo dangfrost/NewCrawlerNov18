@@ -238,16 +238,22 @@ router.post('/dry-run', requireAuth, async (req, res) => {
     let embedding = null;
     if (instance.vector_field_name) {
       console.log('Generating embedding for processed content...');
-      const embeddingResult = await withRetry(async () => {
-        return await openai.embeddings.create({
-          model: instance.embedding_model_name,
-          input: processedContent
-        });
-      });
+      const embeddingResult = await withTimeout(
+        withRetry(async () => {
+          return await openai.embeddings.create({
+            model: instance.embedding_model_name,
+            input: processedContent
+          });
+        }),
+        30000, // 30 second timeout for embeddings (they should be fast)
+        'Embedding generation timeout - this should not take more than 30 seconds'
+      );
       embedding = embeddingResult.data[0].embedding;
+      console.log(`Embedding generated: ${embedding.length} dimensions`);
     }
 
     // Return before/after comparison
+    console.log('Dry run complete, sending response');
     res.json({
       success: true,
       before: {
@@ -264,6 +270,7 @@ router.post('/dry-run', requireAuth, async (req, res) => {
         prompt_used: instance.prompt
       }
     });
+    console.log('Dry run response sent successfully');
 
   } catch (error) {
     console.error('Dry run error:', error);
@@ -445,13 +452,18 @@ async function processBatch(jobId) {
         // Generate new embedding for processed content
         if (instance.vector_field_name) {
           await addLog(`Record ${recordId}: Generating embedding...`);
-          const embeddingResult = await withRetry(async () => {
-            return await openai.embeddings.create({
-              model: instance.embedding_model_name,
-              input: processedContent
-            });
-          });
+          const embeddingResult = await withTimeout(
+            withRetry(async () => {
+              return await openai.embeddings.create({
+                model: instance.embedding_model_name,
+                input: processedContent
+              });
+            }),
+            30000, // 30 second timeout
+            'Embedding generation timeout'
+          );
           updatedRecord[instance.vector_field_name] = embeddingResult.data[0].embedding;
+          await addLog(`Record ${recordId}: Embedding generated (${embeddingResult.data[0].embedding.length} dims)`);
         }
 
         // Delete old record
