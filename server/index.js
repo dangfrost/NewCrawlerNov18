@@ -114,6 +114,58 @@ app.all('/api/admin/update-to-gpt35', async (req, res) => {
   }
 });
 
+// Fix Gemini model names to include -latest suffix
+app.all('/api/admin/fix-gemini-models', async (req, res) => {
+  try {
+    const { getDb } = await import('./db/client.js');
+    const { databaseInstances } = await import('./db/schema.js');
+
+    const db = getDb();
+
+    // Get all instances
+    const instances = await db.select().from(databaseInstances);
+
+    const updates = [];
+    for (const instance of instances) {
+      const oldModel = instance.generative_model_name;
+      let newModel = oldModel;
+
+      // Fix Gemini model names
+      if (oldModel === 'gemini-1.5-flash') {
+        newModel = 'gemini-1.5-flash-latest';
+      } else if (oldModel === 'gemini-1.5-pro') {
+        newModel = 'gemini-1.5-pro-latest';
+      }
+
+      if (newModel !== oldModel) {
+        await db
+          .update(databaseInstances)
+          .set({
+            generative_model_name: newModel,
+            updated_date: new Date()
+          })
+          .where(eq(databaseInstances.id, instance.id));
+
+        updates.push({
+          id: instance.id,
+          name: instance.name,
+          old_model: oldModel,
+          new_model: newModel
+        });
+      }
+    }
+
+    res.json({
+      success: true,
+      message: `Fixed ${updates.length} instances with old Gemini model names`,
+      updates
+    });
+  } catch (error) {
+    console.error('Fix Gemini models error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Serve static files from Vite build (for production)
 if (process.env.NODE_ENV === 'production') {
   const distPath = join(__dirname, '..', 'dist');
