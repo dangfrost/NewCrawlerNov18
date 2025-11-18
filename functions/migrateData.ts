@@ -36,26 +36,18 @@ Deno.serve(async (req) => {
     const jobLogs = await base44.asServiceRole.entities.JobLog.list();
 
     console.log(`Found: ${instances.length} instances, ${jobs.length} jobs, ${jobLogs.length} logs`);
-    
-    // Return early if no data to migrate
-    if (instances.length === 0 && jobs.length === 0 && jobLogs.length === 0) {
-      await pool.end();
-      return Response.json({
-        success: true,
-        message: 'No data found in Base44 entities to migrate. Your Base44 entities are empty.',
-        found: { instances: 0, jobs: 0, logs: 0 },
-        migrated: { instances: 0, jobs: 0, logs: 0 }
-      });
-    }
+    console.log('Sample instance:', instances[0]);
 
     let migratedInstances = 0;
     let migratedJobs = 0;
     let migratedLogs = 0;
+    const errors = [];
 
     // Migrate instances
     for (const instance of instances) {
       try {
-        await pool.query(
+        console.log(`Migrating instance: ${instance.id} - ${instance.name}`);
+        const result = await pool.query(
           `INSERT INTO database_instances (
             id, created_date, updated_date, created_by,
             instance_type, name, description, zilliz_endpoint, zilliz_token,
@@ -64,7 +56,10 @@ Deno.serve(async (req) => {
             prompt, generative_model_name, status, schedule_interval,
             last_run, top_k
           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)
-          ON CONFLICT (id) DO NOTHING`,
+          ON CONFLICT (id) DO UPDATE SET
+            updated_date = EXCLUDED.updated_date,
+            name = EXCLUDED.name,
+            status = EXCLUDED.status`,
           [
             instance.id, instance.created_date, instance.updated_date, instance.created_by,
             instance.instance_type || 'augmentor', instance.name, instance.description,
@@ -77,23 +72,29 @@ Deno.serve(async (req) => {
             instance.last_run, instance.top_k || 5
           ]
         );
+        console.log(`Instance ${instance.id} migrated, rows affected: ${result.rowCount}`);
         migratedInstances++;
       } catch (err) {
-        console.error(`Failed to migrate instance ${instance.id}:`, err.message);
+        const errorMsg = `Failed to migrate instance ${instance.id}: ${err.message}`;
+        console.error(errorMsg);
+        errors.push(errorMsg);
       }
     }
 
     // Migrate jobs
     for (const job of jobs) {
       try {
-        await pool.query(
+        console.log(`Migrating job: ${job.id}`);
+        const result = await pool.query(
           `INSERT INTO jobs (
             id, created_date, updated_date, created_by,
             instance_id, status, execution_type, started_at, last_batch_at,
             current_batch_offset, total_records, processed_records,
             failed_records, is_processing_batch, details
           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
-          ON CONFLICT (id) DO NOTHING`,
+          ON CONFLICT (id) DO UPDATE SET
+            status = EXCLUDED.status,
+            updated_date = EXCLUDED.updated_date`,
           [
             job.id, job.created_date, job.updated_date, job.created_by,
             job.instance_id, job.status || 'pending',
@@ -103,25 +104,31 @@ Deno.serve(async (req) => {
             job.is_processing_batch || false, job.details
           ]
         );
+        console.log(`Job ${job.id} migrated, rows affected: ${result.rowCount}`);
         migratedJobs++;
       } catch (err) {
-        console.error(`Failed to migrate job ${job.id}:`, err.message);
+        const errorMsg = `Failed to migrate job ${job.id}: ${err.message}`;
+        console.error(errorMsg);
+        errors.push(errorMsg);
       }
     }
 
     // Migrate job logs
     for (const log of jobLogs) {
       try {
-        await pool.query(
+        const result = await pool.query(
           `INSERT INTO job_logs (
             id, created_date, job_id, level, message
           ) VALUES ($1, $2, $3, $4, $5)
-          ON CONFLICT (id) DO NOTHING`,
+          ON CONFLICT (id) DO UPDATE SET
+            message = EXCLUDED.message`,
           [log.id, log.created_date, log.job_id, log.level || 'INFO', log.message]
         );
         migratedLogs++;
       } catch (err) {
-        console.error(`Failed to migrate log ${log.id}:`, err.message);
+        const errorMsg = `Failed to migrate log ${log.id}: ${err.message}`;
+        console.error(errorMsg);
+        errors.push(errorMsg);
       }
     }
 
@@ -131,7 +138,9 @@ Deno.serve(async (req) => {
 
     return Response.json({ 
       success: true, 
-      message: 'Data migrated successfully to NeonDB!',
+      message: errors.length > 0 
+        ? `Migration completed with ${errors.length} errors. Check logs for details.`
+        : 'Data migrated successfully to NeonDB!',
       migrated: {
         instances: migratedInstances,
         jobs: migratedJobs,
@@ -141,7 +150,8 @@ Deno.serve(async (req) => {
         instances: instances.length,
         jobs: jobs.length,
         logs: jobLogs.length
-      }
+      },
+      errors: errors.length > 0 ? errors : undefined
     });
 
   } catch (error) {
