@@ -18,6 +18,12 @@ const AI_OPERATIONS = [
   { value: 'custom', label: 'Custom Operation', description: 'Define your own AI prompt' }
 ];
 
+const GPT_MODELS = [
+  { value: 'gpt-4', label: 'GPT-4', description: 'Highest quality, slower (~30-40s), most expensive' },
+  { value: 'gpt-4-turbo', label: 'GPT-4 Turbo', description: 'Good quality, faster (~15-20s), cheaper than GPT-4' },
+  { value: 'gpt-3.5-turbo', label: 'GPT-3.5 Turbo', description: 'Fast (~5-7s), cheapest, lower quality' }
+];
+
 const DEFAULT_PROMPTS = {
   strip_english: "Given the following text, remove all English words and phrases, leaving only non-English content. If the text is purely English, return an empty string. The text is: {{FIELD_VALUE}}",
   translate: "Translate the following text to [TARGET_LANGUAGE]. The text is: {{FIELD_VALUE}}",
@@ -41,7 +47,7 @@ export default function CreateInstanceDialog({ open, onOpenChange, onSave, initi
     ai_operation: 'strip_english',
     prompt: DEFAULT_PROMPTS.strip_english,
     embedding_model_name: 'text-embedding-3-large', // Changed default
-    generative_model_name: 'gpt-4o', // Changed default
+    generative_model_name: 'gpt-3.5-turbo', // Default to fastest model
     schedule_interval: 0,
     top_k: 5,
   });
@@ -60,7 +66,7 @@ export default function CreateInstanceDialog({ open, onOpenChange, onSave, initi
         prompt: initialData.prompt || DEFAULT_PROMPTS[initialData.ai_operation] || '',
         vector_field_name: initialData.vector_field_name || '',
         embedding_model_name: initialData.embedding_model_name || 'text-embedding-3-large', // Initialize from initialData or new default
-        generative_model_name: initialData.generative_model_name || 'gpt-4o', // Initialize from initialData or new default
+        generative_model_name: initialData.generative_model_name || 'gpt-3.5-turbo', // Initialize from initialData or default to fastest model
         schedule_interval: initialData.schedule_interval || 0,
         top_k: initialData.top_k || 5,
       });
@@ -81,7 +87,7 @@ export default function CreateInstanceDialog({ open, onOpenChange, onSave, initi
         ai_operation: 'strip_english',
         prompt: DEFAULT_PROMPTS.strip_english,
         embedding_model_name: 'text-embedding-3-large', // New default
-        generative_model_name: 'gpt-4o', // New default
+        generative_model_name: 'gpt-3.5-turbo', // Default to fastest model
         schedule_interval: 0,
         top_k: 5,
       });
@@ -397,15 +403,28 @@ export default function CreateInstanceDialog({ open, onOpenChange, onSave, initi
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
-                    <Label htmlFor="generative_model_name">Generative Model</Label>
-                    <Input
-                        id="generative_model_name"
+                    <Label htmlFor="generative_model_name">Generative Model *</Label>
+                    <Select
                         value={formData.generative_model_name}
-                        onChange={(e) => handleChange('generative_model_name', e.target.value)}
-                        placeholder="e.g., gpt-4o, gpt-4-turbo"
-                    />
+                        onValueChange={(value) => handleChange('generative_model_name', value)}
+                        required={instanceType === 'augmentor'}
+                    >
+                        <SelectTrigger>
+                        <SelectValue placeholder="Select GPT model" />
+                        </SelectTrigger>
+                        <SelectContent>
+                        {GPT_MODELS.map((model) => (
+                            <SelectItem key={model.value} value={model.value}>
+                            <div>
+                                <div className="font-medium">{model.label}</div>
+                                <div className="text-xs text-slate-500">{model.description}</div>
+                            </div>
+                            </SelectItem>
+                        ))}
+                        </SelectContent>
+                    </Select>
                     <p className="text-xs text-slate-500 mt-2">
-                        The OpenAI model used for text generation.
+                        Choose the GPT model based on your speed and quality needs.
                     </p>
                     </div>
                     <div>
