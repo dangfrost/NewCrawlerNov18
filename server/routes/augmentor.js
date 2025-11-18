@@ -1,5 +1,6 @@
 import express from 'express';
 import OpenAI from 'openai';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 import { getDb, generateId } from '../db/client.js';
 import { databaseInstances, jobs, jobLogs } from '../db/schema.js';
 import { eq } from 'drizzle-orm';
@@ -38,6 +39,43 @@ async function withTimeout(promise, timeoutMs, errorMessage) {
       setTimeout(() => reject(new Error(errorMessage || `Operation timed out after ${timeoutMs}ms`)), timeoutMs)
     )
   ]);
+}
+
+// AI Service Router - calls OpenAI or Gemini based on model name
+async function callAIService(modelName, messages, temperature = 0.3) {
+  if (modelName.startsWith('gemini-')) {
+    // Use Google Gemini
+    const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
+    const model = genAI.getGenerativeModel({ model: modelName });
+
+    // Convert OpenAI message format to Gemini format
+    // Gemini uses a simpler format - just concatenate messages
+    const prompt = messages.map(msg => {
+      if (msg.role === 'system') return `Instructions: ${msg.content}`;
+      return msg.content;
+    }).join('\n\n');
+
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    const text = response.text();
+
+    // Return in OpenAI-compatible format
+    return {
+      choices: [{
+        message: {
+          content: text
+        }
+      }]
+    };
+  } else {
+    // Use OpenAI
+    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    return await openai.chat.completions.create({
+      model: modelName,
+      messages: messages,
+      temperature: temperature,
+    });
+  }
 }
 
 async function zillizApiCall(endpoint, token, path, body, timeout = 30000) {
@@ -212,24 +250,21 @@ router.post('/dry-run', requireAuth, async (req, res) => {
       contentToProcess = contentToProcess.substring(0, MAX_CONTENT_LENGTH);
     }
 
-    // Process with OpenAI
-    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    // Process with AI (OpenAI or Gemini)
     const promptWithContent = instance.prompt.replace(/\{\{FIELD_VALUE\}\}/g, contentToProcess);
 
-    console.log('Sending to OpenAI for dry run...');
+    console.log(`Sending to ${instance.generative_model_name} for dry run...`);
 
     const aiResult = await withTimeout(
       withRetry(async () => {
-        return await openai.chat.completions.create({
-          model: instance.generative_model_name,
-          messages: [
-            { role: 'user', content: promptWithContent }
-          ],
-          temperature: 0.3,
-        });
+        return await callAIService(
+          instance.generative_model_name,
+          [{ role: 'user', content: promptWithContent }],
+          0.3
+        );
       }),
       OPENAI_TIMEOUT,
-      'OpenAI request timeout - the prompt may be too long or the service is slow'
+      'AI request timeout - the prompt may be too long or the service is slow'
     );
 
     const processedContent = aiResult.choices[0].message.content.trim();
@@ -360,8 +395,6 @@ async function processBatch(jobId) {
     }
 
     // Process batch with AI
-    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-
     const batchPrompts = records.map((record, idx) => {
       let content = record[instance.target_field] || '';
       const tagRegex = /\[pagecontent\](.*?)\[\/pagecontent\]/gs;
@@ -380,23 +413,23 @@ async function processBatch(jobId) {
 
     const combinedPrompt = batchPrompts.join('\n\n---\n\n');
 
-    await addLog('Sending batch to OpenAI for processing...');
+    await addLog(`Sending batch to ${instance.generative_model_name} for processing...`);
 
     let aiResponses = [];
     try {
       const aiResult = await withTimeout(
         withRetry(async () => {
-          return await openai.chat.completions.create({
-            model: instance.generative_model_name,
-            messages: [
+          return await callAIService(
+            instance.generative_model_name,
+            [
               { role: 'system', content: 'Process each record separately. Return responses in the format: [RECORD X]\n<processed content>' },
               { role: 'user', content: combinedPrompt }
             ],
-            temperature: 0.3,
-          });
+            0.3
+          );
         }),
         OPENAI_TIMEOUT,
-        'OpenAI processing timeout - batch may be too large or service is slow'
+        'AI processing timeout - batch may be too large or service is slow'
       );
 
       const fullResponse = aiResult.choices[0].message.content;

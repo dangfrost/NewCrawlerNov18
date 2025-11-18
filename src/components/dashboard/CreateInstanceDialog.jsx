@@ -18,10 +18,13 @@ const AI_OPERATIONS = [
   { value: 'custom', label: 'Custom Operation', description: 'Define your own AI prompt' }
 ];
 
-const GPT_MODELS = [
-  { value: 'gpt-4', label: 'GPT-4', description: 'Highest quality, slower (~30-40s), most expensive' },
-  { value: 'gpt-4-turbo', label: 'GPT-4 Turbo', description: 'Good quality, faster (~15-20s), cheaper than GPT-4' },
-  { value: 'gpt-3.5-turbo', label: 'GPT-3.5 Turbo', description: 'Fast (~5-7s), cheapest, lower quality' }
+const AI_MODELS = [
+  { value: 'gpt-4o', label: 'GPT-4o', description: 'Latest OpenAI, excellent quality (~15-20s)', provider: 'OpenAI' },
+  { value: 'gpt-4-turbo', label: 'GPT-4 Turbo', description: 'Good quality, fast (~15-20s)', provider: 'OpenAI' },
+  { value: 'gpt-4', label: 'GPT-4', description: 'Highest quality, slower (~30-40s)', provider: 'OpenAI' },
+  { value: 'gpt-3.5-turbo', label: 'GPT-3.5 Turbo', description: 'Fast but lower quality (~5-7s)', provider: 'OpenAI' },
+  { value: 'gemini-1.5-pro', label: 'Gemini 1.5 Pro', description: 'Excellent quality, fast (~5-10s)', provider: 'Google' },
+  { value: 'gemini-1.5-flash', label: 'Gemini 1.5 Flash', description: 'Very fast, good quality (~2-4s)', provider: 'Google' }
 ];
 
 const DEFAULT_PROMPTS = {
@@ -47,7 +50,7 @@ export default function CreateInstanceDialog({ open, onOpenChange, onSave, initi
     ai_operation: 'strip_english',
     prompt: DEFAULT_PROMPTS.strip_english,
     embedding_model_name: 'text-embedding-3-large', // Changed default
-    generative_model_name: 'gpt-3.5-turbo', // Default to fastest model
+    generative_model_name: 'gpt-4o', // Default to latest model with good balance
     schedule_interval: 0,
     top_k: 5,
   });
@@ -66,7 +69,7 @@ export default function CreateInstanceDialog({ open, onOpenChange, onSave, initi
         prompt: initialData.prompt || DEFAULT_PROMPTS[initialData.ai_operation] || '',
         vector_field_name: initialData.vector_field_name || '',
         embedding_model_name: initialData.embedding_model_name || 'text-embedding-3-large', // Initialize from initialData or new default
-        generative_model_name: initialData.generative_model_name || 'gpt-3.5-turbo', // Initialize from initialData or default to fastest model
+        generative_model_name: initialData.generative_model_name || 'gpt-4o', // Initialize from initialData or default to latest model
         schedule_interval: initialData.schedule_interval || 0,
         top_k: initialData.top_k || 5,
       });
@@ -87,7 +90,7 @@ export default function CreateInstanceDialog({ open, onOpenChange, onSave, initi
         ai_operation: 'strip_english',
         prompt: DEFAULT_PROMPTS.strip_english,
         embedding_model_name: 'text-embedding-3-large', // New default
-        generative_model_name: 'gpt-3.5-turbo', // Default to fastest model
+        generative_model_name: 'gpt-4o', // Default to latest model with good balance
         schedule_interval: 0,
         top_k: 5,
       });
@@ -410,13 +413,13 @@ export default function CreateInstanceDialog({ open, onOpenChange, onSave, initi
                         required={instanceType === 'augmentor'}
                     >
                         <SelectTrigger>
-                        <SelectValue placeholder="Select GPT model" />
+                        <SelectValue placeholder="Select AI model" />
                         </SelectTrigger>
                         <SelectContent>
-                        {GPT_MODELS.map((model) => (
+                        {AI_MODELS.map((model) => (
                             <SelectItem key={model.value} value={model.value}>
                             <div>
-                                <div className="font-medium">{model.label}</div>
+                                <div className="font-medium">{model.label} <span className="text-xs text-slate-400">({model.provider})</span></div>
                                 <div className="text-xs text-slate-500">{model.description}</div>
                             </div>
                             </SelectItem>
@@ -424,7 +427,7 @@ export default function CreateInstanceDialog({ open, onOpenChange, onSave, initi
                         </SelectContent>
                     </Select>
                     <p className="text-xs text-slate-500 mt-2">
-                        Choose the GPT model based on your speed and quality needs.
+                        Choose the AI model based on your speed and quality needs.
                     </p>
                     </div>
                     <div>
