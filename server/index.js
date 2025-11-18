@@ -41,8 +41,8 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-// One-time migration: Update augmentors to GPT-3.5-turbo
-app.post('/api/admin/update-to-gpt35', async (req, res) => {
+// One-time migration: Update augmentors to GPT-3.5-turbo (allow GET for easy access)
+app.all('/api/admin/update-to-gpt35', async (req, res) => {
   try {
     const { getDb } = await import('./db/client.js');
     const { databaseInstances } = await import('./db/schema.js');
