@@ -1,39 +1,29 @@
-// Authentication middleware
-// TODO: Replace with your preferred authentication system (JWT, Passport, etc.)
+// Authentication middleware using Google OAuth via Passport
 
 export function requireAuth(req, res, next) {
-  // Placeholder authentication
-  // In production, validate JWT token, session, or API key here
-
-  const authHeader = req.headers.authorization;
-
-  if (!authHeader) {
-    return res.status(401).json({ error: 'Unauthorized - No authorization header' });
+  // Check if user is authenticated via Passport session
+  if (!req.isAuthenticated || !req.isAuthenticated()) {
+    return res.status(401).json({
+      error: 'Unauthorized - Please sign in with your @adaptive.co.uk Google account',
+      requiresAuth: true
+    });
   }
 
-  // For now, accept any bearer token and extract user info
-  // TODO: Validate the token properly
-  const token = authHeader.replace('Bearer ', '');
-
-  if (!token) {
-    return res.status(401).json({ error: 'Unauthorized - Invalid token' });
+  // Verify user has @adaptive.co.uk email
+  if (!req.user || !req.user.email || !req.user.email.endsWith('@adaptive.co.uk')) {
+    return res.status(403).json({
+      error: 'Access denied - Only @adaptive.co.uk email addresses are allowed',
+      requiresAuth: true
+    });
   }
-
-  // Mock user object - replace with real user validation
-  req.user = {
-    email: 'user@example.com',
-    role: 'user',
-    id: 'user-id'
-  };
 
   next();
 }
 
 export function requireAdmin(req, res, next) {
   requireAuth(req, res, () => {
-    if (req.user.role !== 'admin') {
-      return res.status(403).json({ error: 'Admin access required' });
-    }
+    // For now, all @adaptive.co.uk users are admins
+    // You can add role-based access later if needed
     next();
   });
 }

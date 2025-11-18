@@ -1,11 +1,15 @@
 import express from 'express';
 import cors from 'cors';
+import session from 'express-session';
+import passport from 'passport';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import instancesRouter from './routes/instances.js';
 import jobsRouter from './routes/jobs.js';
 import queryRouter from './routes/query.js';
 import augmentorRouter from './routes/augmentor.js';
+import authRouter from './routes/auth.js';
+import { configurePassport } from './config/passport.js';
 import { startScheduler } from './workers/scheduler.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -20,15 +24,40 @@ if (process.env.ENABLE_SCHEDULER !== 'false') {
 }
 
 // Middleware
-app.use(cors());
+app.use(cors({
+  origin: process.env.NODE_ENV === 'production'
+    ? true
+    : 'http://localhost:5173',
+  credentials: true
+}));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Session configuration
+app.use(session({
+  secret: process.env.SESSION_SECRET || 'your-secret-key-change-in-production',
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    secure: process.env.NODE_ENV === 'production',
+    httpOnly: true,
+    maxAge: 24 * 60 * 60 * 1000 // 24 hours
+  }
+}));
+
+// Initialize Passport
+configurePassport();
+app.use(passport.initialize());
+app.use(passport.session());
 
 // Request logging
 app.use((req, res, next) => {
   console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
   next();
 });
+
+// Authentication Routes
+app.use('/auth', authRouter);
 
 // API Routes
 app.use('/api/instances', instancesRouter);

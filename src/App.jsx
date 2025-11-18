@@ -49,17 +49,27 @@ const AuthenticatedApp = () => {
           <MainPage />
         </LayoutWrapper>
       } />
-      {Object.entries(Pages).map(([path, Page]) => (
-        <Route
-          key={path}
-          path={`/${path}`}
-          element={
-            <LayoutWrapper currentPageName={path}>
-              <Page />
-            </LayoutWrapper>
-          }
-        />
-      ))}
+      {Object.entries(Pages).map(([path, Page]) => {
+        // Don't wrap login pages with layout
+        const noLayoutPages = ['login', 'login-failed'];
+        const useLayout = !noLayoutPages.includes(path);
+
+        return (
+          <Route
+            key={path}
+            path={`/${path}`}
+            element={
+              useLayout ? (
+                <LayoutWrapper currentPageName={path}>
+                  <Page />
+                </LayoutWrapper>
+              ) : (
+                <Page />
+              )
+            }
+          />
+        );
+      })}
       <Route path="*" element={<PageNotFound />} />
     </Routes>
   );
