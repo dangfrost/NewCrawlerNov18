@@ -1,6 +1,6 @@
 import { Link, useLocation } from "react-router-dom";
 import { createPageUrl } from "@/utils";
-import { Database, Activity, Zap, Settings } from "lucide-react";
+import { Database, Activity, Zap } from "lucide-react";
 
 export default function Layout({ children }) {
   const location = useLocation();
@@ -15,11 +15,6 @@ export default function Layout({ children }) {
       title: "Jobs",
       url: createPageUrl("Jobs"),
       icon: Activity,
-    },
-    {
-      title: "Setup",
-      url: createPageUrl("MigrationSetup"),
-      icon: Settings,
     },
   ];
 
