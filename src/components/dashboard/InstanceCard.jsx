@@ -142,6 +142,24 @@ export default function InstanceCard({
                     <code className="text-xs text-slate-700 font-mono break-words">{instance.query_filter}</code>
                 </div>
 
+                {/* GPT Model */}
+                <div className="p-3 bg-slate-50/70 rounded-xl">
+                    <p className="text-xs text-slate-500 mb-1">GPT Model</p>
+                    <div className="text-sm">
+                        <span className="font-semibold text-slate-900">
+                            {instance.generative_model_name === 'gpt-4' && 'GPT-4'}
+                            {instance.generative_model_name === 'gpt-4-turbo' && 'GPT-4 Turbo'}
+                            {instance.generative_model_name === 'gpt-3.5-turbo' && 'GPT-3.5 Turbo'}
+                            {!['gpt-4', 'gpt-4-turbo', 'gpt-3.5-turbo'].includes(instance.generative_model_name) && instance.generative_model_name}
+                        </span>
+                        <span className="text-xs text-slate-600 ml-2">
+                            {instance.generative_model_name === 'gpt-4' && '(~30-40s)'}
+                            {instance.generative_model_name === 'gpt-4-turbo' && '(~15-20s)'}
+                            {instance.generative_model_name === 'gpt-3.5-turbo' && '(~5-7s)'}
+                        </span>
+                    </div>
+                </div>
+
                 {/* Schedule or Last Run Info */}
                 {instance.schedule_interval > 0 ? (
                     <div className="flex items-center gap-2 p-3 bg-slate-50/70 rounded-xl text-sm">
