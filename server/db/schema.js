@@ -22,9 +22,9 @@ export const databaseInstances = pgTable('database_instances', {
   prompt: text('prompt'),
   generative_model_name: text('generative_model_name').default('gpt-4o'),
 
-  // Two-pass processing configuration
-  languages_to_remove: text('languages_to_remove').default('en'), // Comma-separated: 'en,fr,de'
-  enable_two_pass: boolean('enable_two_pass').default(true), // Enable programmatic + AI passes
+  // Two-pass processing configuration - COMMENTED OUT UNTIL MIGRATION
+  // languages_to_remove: text('languages_to_remove').default('en'), // Comma-separated: 'en,fr,de'
+  // enable_two_pass: boolean('enable_two_pass').default(true), // Enable programmatic + AI passes
 
   status: text('status').notNull().default('active'), // 'active' | 'paused' | 'error'
   schedule_interval: integer('schedule_interval').default(0),
@@ -50,12 +50,12 @@ export const jobs = pgTable('jobs', {
   failed_records: integer('failed_records').default(0),
   is_processing_batch: boolean('is_processing_batch').default(false),
 
-  // Two-pass processing tracking
-  current_pass: integer('current_pass').default(1), // 1 = programmatic, 2 = AI
-  pass1_processed: integer('pass1_processed').default(0), // Records processed in pass 1
-  pass1_cleaned: integer('pass1_cleaned').default(0), // Records fully cleaned in pass 1 (skip pass 2)
-  pass2_needed: integer('pass2_needed').default(0), // Records that need AI processing
-  pass2_processed: integer('pass2_processed').default(0), // Records processed in pass 2
+  // Two-pass processing tracking - COMMENTED OUT UNTIL MIGRATION
+  // current_pass: integer('current_pass').default(1), // 1 = programmatic, 2 = AI
+  // pass1_processed: integer('pass1_processed').default(0), // Records processed in pass 1
+  // pass1_cleaned: integer('pass1_cleaned').default(0), // Records fully cleaned in pass 1 (skip pass 2)
+  // pass2_needed: integer('pass2_needed').default(0), // Records that need AI processing
+  // pass2_processed: integer('pass2_processed').default(0), // Records processed in pass 2
 
   details: text('details'),
 });
