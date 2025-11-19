@@ -14,45 +14,128 @@ const OPENAI_TIMEOUT = 120000; // 120 seconds
 const MAX_RETRIES = 3;
 const CLEAN_THRESHOLD = 0.15; // If <15% of content remains after language removal, consider it "clean" (skip AI)
 
-// Top 300 most common English words for detection
-const COMMON_ENGLISH_WORDS = new Set([
-  'the', 'be', 'to', 'of', 'and', 'a', 'in', 'that', 'have', 'i', 'it', 'for', 'not', 'on', 'with',
-  'he', 'as', 'you', 'do', 'at', 'this', 'but', 'his', 'by', 'from', 'they', 'we', 'say', 'her', 'she',
-  'or', 'an', 'will', 'my', 'one', 'all', 'would', 'there', 'their', 'what', 'so', 'up', 'out', 'if',
-  'about', 'who', 'get', 'which', 'go', 'me', 'when', 'make', 'can', 'like', 'time', 'no', 'just', 'him',
-  'know', 'take', 'people', 'into', 'year', 'your', 'good', 'some', 'could', 'them', 'see', 'other', 'than',
-  'then', 'now', 'look', 'only', 'come', 'its', 'over', 'think', 'also', 'back', 'after', 'use', 'two',
-  'how', 'our', 'work', 'first', 'well', 'way', 'even', 'new', 'want', 'because', 'any', 'these', 'give',
-  'day', 'most', 'us', 'is', 'was', 'are', 'been', 'has', 'had', 'were', 'said', 'did', 'having', 'may',
-  'should', 'am', 'being', 'can', 'could', 'would', 'will', 'shall', 'might', 'must', 'ought',
-  'very', 'here', 'where', 'why', 'how', 'when', 'who', 'what', 'which', 'whose', 'whom',
-  'man', 'woman', 'child', 'person', 'people', 'family', 'friend', 'group', 'government', 'company',
-  'number', 'part', 'place', 'case', 'fact', 'hand', 'eye', 'life', 'world', 'house', 'point', 'thing',
-  'tell', 'call', 'try', 'ask', 'need', 'feel', 'become', 'leave', 'put', 'mean', 'keep', 'let', 'begin',
-  'seem', 'help', 'show', 'hear', 'play', 'run', 'move', 'live', 'believe', 'hold', 'bring', 'happen',
-  'write', 'sit', 'stand', 'lose', 'pay', 'meet', 'include', 'continue', 'set', 'learn', 'change', 'lead',
-  'understand', 'watch', 'follow', 'stop', 'create', 'speak', 'read', 'spend', 'grow', 'open', 'walk', 'win',
-  'teach', 'offer', 'remember', 'consider', 'appear', 'buy', 'serve', 'die', 'send', 'expect', 'build',
-  'stay', 'fall', 'cut', 'reach', 'kill', 'raise', 'pass', 'sell', 'decide', 'return', 'explain', 'hope',
-  'develop', 'carry', 'break', 'receive', 'agree', 'support', 'hit', 'produce', 'eat', 'cover', 'catch',
-  'draw', 'choose', 'cause', 'point', 'identify', 'turn', 'listen', 'buy', 'pick', 'wear', 'introduce'
-]);
+// Top 300 most common words for each supported language
+const COMMON_WORDS = {
+  en: new Set([
+    'the', 'be', 'to', 'of', 'and', 'a', 'in', 'that', 'have', 'i', 'it', 'for', 'not', 'on', 'with',
+    'he', 'as', 'you', 'do', 'at', 'this', 'but', 'his', 'by', 'from', 'they', 'we', 'say', 'her', 'she',
+    'or', 'an', 'will', 'my', 'one', 'all', 'would', 'there', 'their', 'what', 'so', 'up', 'out', 'if',
+    'about', 'who', 'get', 'which', 'go', 'me', 'when', 'make', 'can', 'like', 'time', 'no', 'just', 'him',
+    'know', 'take', 'people', 'into', 'year', 'your', 'good', 'some', 'could', 'them', 'see', 'other', 'than',
+    'then', 'now', 'look', 'only', 'come', 'its', 'over', 'think', 'also', 'back', 'after', 'use', 'two',
+    'how', 'our', 'work', 'first', 'well', 'way', 'even', 'new', 'want', 'because', 'any', 'these', 'give',
+    'day', 'most', 'us', 'is', 'was', 'are', 'been', 'has', 'had', 'were', 'said', 'did', 'having', 'may',
+    'should', 'am', 'being', 'can', 'could', 'would', 'will', 'shall', 'might', 'must', 'ought',
+    'very', 'here', 'where', 'why', 'how', 'when', 'who', 'what', 'which', 'whose', 'whom',
+    'man', 'woman', 'child', 'person', 'people', 'family', 'friend', 'group', 'government', 'company',
+    'number', 'part', 'place', 'case', 'fact', 'hand', 'eye', 'life', 'world', 'house', 'point', 'thing',
+    'tell', 'call', 'try', 'ask', 'need', 'feel', 'become', 'leave', 'put', 'mean', 'keep', 'let', 'begin',
+    'seem', 'help', 'show', 'hear', 'play', 'run', 'move', 'live', 'believe', 'hold', 'bring', 'happen',
+    'write', 'sit', 'stand', 'lose', 'pay', 'meet', 'include', 'continue', 'set', 'learn', 'change', 'lead',
+    'understand', 'watch', 'follow', 'stop', 'create', 'speak', 'read', 'spend', 'grow', 'open', 'walk', 'win',
+    'teach', 'offer', 'remember', 'consider', 'appear', 'buy', 'serve', 'die', 'send', 'expect', 'build',
+    'stay', 'fall', 'cut', 'reach', 'kill', 'raise', 'pass', 'sell', 'decide', 'return', 'explain', 'hope',
+    'develop', 'carry', 'break', 'receive', 'agree', 'support', 'hit', 'produce', 'eat', 'cover', 'catch',
+    'draw', 'choose', 'cause', 'point', 'identify', 'turn', 'listen', 'buy', 'pick', 'wear', 'introduce'
+  ]),
 
-// Detect if a sentence is English based on common word frequency
-function isEnglishSentence(sentence) {
-  // Extract words (lowercase, alphanumeric only)
-  const words = sentence.toLowerCase().match(/\b[a-z]+\b/g) || [];
-  if (words.length < 3) return false; // Too short to determine
+  fr: new Set([
+    'le', 'de', 'un', 'être', 'et', 'à', 'il', 'avoir', 'ne', 'je', 'son', 'que', 'se', 'qui', 'ce',
+    'dans', 'en', 'du', 'elle', 'au', 'pour', 'pas', 'que', 'vous', 'par', 'sur', 'faire', 'plus', 'dire',
+    'me', 'on', 'mon', 'lui', 'nous', 'comme', 'mais', 'pouvoir', 'avec', 'tout', 'y', 'aller', 'voir',
+    'en', 'bien', 'où', 'sans', 'tu', 'ou', 'leur', 'homme', 'si', 'deux', 'moi', 'vouloir', 'te', 'là',
+    'dont', 'autre', 'celui', 'votre', 'très', 'ni', 'jour', 'même', 'aussi', 'savoir', 'notre', 'temps',
+    'peu', 'chose', 'ses', 'tant', 'encore', 'tous', 'venir', 'monde', 'croire', 'grand', 'main', 'premier',
+    'car', 'donc', 'toujours', 'dire', 'avant', 'quelque', 'année', 'France', 'trop', 'rendre', 'tenir',
+    'prendre', 'sous', 'vie', 'puis', 'mettre', 'entre', 'moins', 'fois', 'contre', 'parler', 'après',
+    'donner', 'quel', 'trouver', 'heure', 'bon', 'falloir', 'demander', 'sentir', 'nouvelle', 'pays', 'moment',
+    'alors', 'cas', 'suite', 'part', 'devenir', 'sembler', 'vers', 'dès', 'reste', 'ainsi', 'raison', 'jeune',
+    'femme', 'cela', 'enfant', 'passer', 'point', 'soit', 'chaque', 'quelqu', 'père', 'seulement', 'esprit',
+    'laisser', 'regard', 'besoin', 'présent', 'comprendre', 'ville', 'lever', 'seul', 'chez', 'devant', 'entendre',
+    'fond', 'famille', 'tant', 'cœur', 'place', 'certain', 'ensemble', 'arriver', 'depuis', 'vivre', 'quand',
+    'lieu', 'reprendre', 'penser', 'arrêter', 'rentrer', 'long', 'mourir', 'effet', 'connaître', 'nombre',
+    'personne', 'aujourd', 'sortir', 'rester', 'ouvrir', 'loi', 'œil', 'travers', 'hui', 'mois', 'porter',
+    'attendre', 'suivre', 'tomber', 'écrire', 'garder', 'beau', 'devoir', 'forme', 'cause', 'merci', 'ami',
+    'jamais', 'toute', 'côté', 'dernier', 'fin', 'face', 'exemple', 'voix', 'appeler', 'mieux', 'retourner',
+    'besoin', 'question', 'matin', 'quitter', 'servir', 'entrer', 'revenir', 'soir', 'vue', 'répondre', 'obtenir',
+    'groupe', 'manière', 'société', 'agir', 'corps', 'aimer', 'montrer', 'reconnaître', 'blanc', 'politique',
+    'suivant', 'jouer', 'permettre', 'assez', 'mener', 'fille', 'début', 'changer', 'continuer', 'produire'
+  ]),
 
-  // Count how many words are common English words
-  const englishWordCount = words.filter(word => COMMON_ENGLISH_WORDS.has(word)).length;
-  const englishWordRatio = englishWordCount / words.length;
+  de: new Set([
+    'der', 'die', 'und', 'in', 'den', 'von', 'zu', 'das', 'mit', 'sich', 'des', 'auf', 'für', 'ist', 'im',
+    'dem', 'nicht', 'ein', 'eine', 'als', 'auch', 'es', 'an', 'werden', 'aus', 'er', 'hat', 'dass', 'sie',
+    'nach', 'wird', 'bei', 'einer', 'um', 'am', 'sind', 'noch', 'wie', 'einem', 'über', 'einen', 'so', 'zum',
+    'war', 'haben', 'nur', 'oder', 'aber', 'vor', 'zur', 'bis', 'mehr', 'durch', 'man', 'sein', 'wurde', 'sei',
+    'in', 'prozent', 'hatte', 'kann', 'gegen', 'vom', 'können', 'schon', 'wenn', 'habe', 'seine', 'mark',
+    'ihre', 'dann', 'unter', 'wir', 'soll', 'ich', 'eines', 'es', 'jahr', 'zwei', 'jahren', 'diese', 'dieser',
+    'wieder', 'keine', 'seinem', 'ob', 'dir', 'allen', 'großen', 'bereits', 'damit', 'da', 'seit', 'können',
+    'dies', 'all', 'doch', 'worden', 'dazu', 'gehabt', 'menschen', 'zeit', 'land', 'ihm', 'heute', 'teil',
+    'gut', 'neue', 'seite', 'dabei', 'gewesen', 'dr', 'ohne', 'jedoch', 'selbst', 'ersten', 'nun', 'leben',
+    'ende', 'anderen', 'ja', 'gemacht', 'während', 'tag', 'zwischen', 'immer', 'deutscher', 'ganz', 'deinem',
+    'stelle', 'neuen', 'fall', 'vor', 'deutsche', 'drei', 'werk', 'dort', 'staat', 'kein', 'etwas', 'deutschland',
+    'welt', 'sollte', 'liegt', 'wohl', 'gleichzeitig', 'weitere', 'weg', 'geben', 'tage', 'macht', 'kommt',
+    'frage', 'haus', 'erst', 'hand', 'gleich', 'stehen', 'einzelnen', 'weil', 'ihnen', 'außerdem', 'späteren',
+    'mann', 'frau', 'stelle', 'lässt', 'musik', 'gegeben', 'seines', 'meter', 'allein', 'gerade', 'weise',
+    'beiden', 'ihrem', 'wenig', 'trotz', 'gehen', 'sogar', 'gar', 'sehen', 'setzen', 'kleinen', 'wissen',
+    'letzte', 'anderen', 'bald', 'wegen', 'bleiben', 'zeigen', 'lassen', 'meisten', 'scheint', 'finden',
+    'neben', 'zweiten', 'gebracht', 'kommen', 'hinter', 'denen', 'entwicklung', 'warum', 'oft', 'ebenso',
+    'nächsten', 'gute', 'statt', 'kunst', 'ersten', 'darin', 'deutlich', 'zunächst', 'ihres', 'führen',
+    'bekannt', 'nie', 'fest', 'darauf', 'gilt', 'große', 'vielen', 'erreichen', 'tun', 'aller', 'einmal',
+    'gegenüber', 'genannt', 'erhalten', 'wahr', 'zwar', 'besonders', 'schließlich', 'wollen', 'dessen', 'gab'
+  ]),
 
-  // If >40% of words are common English words, consider it English
-  return englishWordRatio > 0.4;
+  pt: new Set([
+    'o', 'a', 'de', 'e', 'do', 'da', 'em', 'um', 'para', 'é', 'com', 'não', 'uma', 'os', 'no', 'se', 'na',
+    'por', 'mais', 'as', 'dos', 'como', 'mas', 'foi', 'ao', 'ele', 'das', 'tem', 'à', 'seu', 'sua', 'ou',
+    'ser', 'quando', 'muito', 'há', 'nos', 'já', 'está', 'eu', 'também', 'só', 'pelo', 'pela', 'até', 'isso',
+    'ela', 'entre', 'era', 'depois', 'sem', 'mesmo', 'aos', 'ter', 'seus', 'quem', 'nas', 'me', 'esse', 'eles',
+    'estão', 'você', 'tinha', 'foram', 'essa', 'num', 'nem', 'suas', 'meu', 'às', 'minha', 'têm', 'numa', 'pelos',
+    'elas', 'havia', 'seja', 'qual', 'será', 'nós', 'tenho', 'lhe', 'deles', 'essas', 'esses', 'pelas', 'este',
+    'fosse', 'dele', 'tu', 'te', 'vocês', 'vos', 'lhes', 'meus', 'minhas', 'teu', 'tua', 'teus', 'tuas', 'nosso',
+    'nossa', 'nossos', 'nossas', 'dela', 'delas', 'esta', 'estes', 'estas', 'aquele', 'aquela', 'aqueles',
+    'aquelas', 'isto', 'aquilo', 'estou', 'está', 'estamos', 'estão', 'estive', 'esteve', 'estivemos', 'estiveram',
+    'estava', 'estávamos', 'estavam', 'estivera', 'estivéramos', 'esteja', 'estejamos', 'estejam', 'estivesse',
+    'estivéssemos', 'estivessem', 'estiver', 'estivermos', 'estiverem', 'hei', 'há', 'havemos', 'hão', 'houve',
+    'houvemos', 'houveram', 'houvera', 'houvéramos', 'haja', 'hajamos', 'hajam', 'houvesse', 'houvéssemos',
+    'houvessem', 'houver', 'houvermos', 'houverem', 'houverei', 'houverá', 'houveremos', 'houverão', 'houveria',
+    'houveríamos', 'houveriam', 'sou', 'somos', 'são', 'era', 'éramos', 'eram', 'fui', 'foi', 'fomos', 'foram',
+    'fora', 'fôramos', 'seja', 'sejamos', 'sejam', 'fosse', 'fôssemos', 'fossem', 'for', 'formos', 'forem',
+    'serei', 'será', 'seremos', 'serão', 'seria', 'seríamos', 'seriam', 'tenho', 'tem', 'temos', 'tém', 'tinha',
+    'tínhamos', 'tinham', 'tive', 'teve', 'tivemos', 'tiveram', 'tivera', 'tivéramos', 'tenha', 'tenhamos',
+    'tenham', 'tivesse', 'tivéssemos', 'tivessem', 'tiver', 'tivermos', 'tiverem', 'terei', 'terá', 'teremos',
+    'terão', 'teria', 'teríamos', 'teriam', 'fazer', 'dizer', 'ir', 'dar', 'ver', 'saber', 'poder', 'querer'
+  ])
+};
+
+// Detect which languages are present in a sentence based on common word frequency
+// Returns array of detected language codes (e.g., ['en', 'fr'])
+function detectSentenceLanguages(sentence, languagesToCheck = ['en', 'fr', 'de', 'pt']) {
+  // Extract words (lowercase, handle accented characters)
+  const words = sentence.toLowerCase().match(/\b[\wàáâãäåæçèéêëìíîïðñòóôõöøùúûüýþÿ]+\b/g) || [];
+  if (words.length < 3) return []; // Too short to determine
+
+  const detectedLanguages = [];
+
+  // Check each language
+  for (const lang of languagesToCheck) {
+    const wordSet = COMMON_WORDS[lang];
+    if (!wordSet) continue;
+
+    // Count how many words match this language
+    const matchCount = words.filter(word => wordSet.has(word)).length;
+    const matchRatio = matchCount / words.length;
+
+    // If >40% of words are common in this language, consider it detected
+    if (matchRatio > 0.4) {
+      detectedLanguages.push(lang);
+    }
+  }
+
+  return detectedLanguages;
 }
 
-// Pass 1: Programmatic language filtering using English word detection
+// Pass 1: Programmatic language filtering using word frequency detection
 function removeLanguageSentences(text, languagesToRemove = ['en']) {
   if (!text || text.trim().length === 0) {
     return {
@@ -65,8 +148,7 @@ function removeLanguageSentences(text, languagesToRemove = ['en']) {
         sentencesOriginal: 0,
         sentencesKept: 0,
         sentencesRemoved: 0,
-        englishSentences: 0,
-        nonEnglishSentences: 0
+        languageCounts: {}
       }
     };
   }
@@ -91,11 +173,7 @@ function removeLanguageSentences(text, languagesToRemove = ['en']) {
 
   const keptSentences = [];
   const removedSentences = [];
-  let englishCount = 0;
-  let nonEnglishCount = 0;
-
-  // Only remove English if 'en' is in the removal list
-  const shouldRemoveEnglish = languagesToRemove.includes('en');
+  const languageCounts = {};
 
   for (const sentence of sentences) {
     const trimmed = sentence.trim();
@@ -105,18 +183,24 @@ function removeLanguageSentences(text, languagesToRemove = ['en']) {
       continue;
     }
 
-    // Check if sentence is English
-    const isEnglish = isEnglishSentence(trimmed);
+    // Detect which languages are in this sentence
+    const detectedLanguages = detectSentenceLanguages(trimmed);
 
-    if (isEnglish) {
-      englishCount++;
-      if (shouldRemoveEnglish) {
-        removedSentences.push(sentence);
-      } else {
-        keptSentences.push(sentence);
-      }
+    // Track language counts
+    if (detectedLanguages.length === 0) {
+      languageCounts['other'] = (languageCounts['other'] || 0) + 1;
     } else {
-      nonEnglishCount++;
+      for (const lang of detectedLanguages) {
+        languageCounts[lang] = (languageCounts[lang] || 0) + 1;
+      }
+    }
+
+    // Check if sentence should be removed (matches any language in removal list)
+    const shouldRemove = detectedLanguages.some(lang => languagesToRemove.includes(lang));
+
+    if (shouldRemove) {
+      removedSentences.push(sentence);
+    } else {
       keptSentences.push(sentence);
     }
   }
@@ -135,8 +219,7 @@ function removeLanguageSentences(text, languagesToRemove = ['en']) {
       sentencesOriginal: originalSentenceCount,
       sentencesKept: keptSentences.length,
       sentencesRemoved: removedSentences.length,
-      englishSentences: englishCount,
-      nonEnglishSentences: nonEnglishCount
+      languageCounts // e.g., { en: 125, fr: 23, other: 50 }
     }
   };
 }
@@ -496,8 +579,7 @@ router.post('/dry-run', requireAuth, async (req, res) => {
         languages_removed: languagesToRemove,
         stats: {
           sentences_total: pass1Result.stats.sentencesOriginal,
-          sentences_english: pass1Result.stats.englishSentences,
-          sentences_other: pass1Result.stats.nonEnglishSentences,
+          language_counts: pass1Result.stats.languageCounts,
           sentences_removed: pass1Result.stats.sentencesRemoved,
           sentences_kept: pass1Result.stats.sentencesKept,
           chars_original: pass1Result.stats.original,
@@ -843,7 +925,10 @@ export async function processBatch(jobId, currentRetry = 0) {
       if (r.pass1Result) {
         const stats = r.pass1Result.stats;
         const percentRemoved = Math.round((1 - stats.percentRemaining) * 100);
-        await addLog(`R${r.idx + 1}: ${stats.sentencesOriginal} sentences (${stats.englishSentences} EN, ${stats.nonEnglishSentences} other) | Removed ${stats.sentencesRemoved} (${percentRemoved}%), kept ${stats.percentRemaining * 100}%`);
+        const langCounts = Object.entries(stats.languageCounts || {})
+          .map(([lang, count]) => `${lang}:${count}`)
+          .join(', ');
+        await addLog(`R${r.idx + 1}: ${stats.sentencesOriginal} sentences (${langCounts}) | Removed ${stats.sentencesRemoved} (${percentRemoved}%), kept ${stats.percentRemaining * 100}%`);
       }
     }
 
