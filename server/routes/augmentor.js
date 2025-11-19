@@ -350,7 +350,7 @@ router.post('/start', requireAuth, async (req, res) => {
   }
 });
 
-// Dry run - process one record and show before/after
+// Dry run - process one record and show two-pass processing results
 router.post('/dry-run', requireAuth, async (req, res) => {
   try {
     const { instance_id } = req.body;
@@ -406,7 +406,8 @@ router.post('/dry-run', requireAuth, async (req, res) => {
     let contentToProcess = originalContent;
     const tagRegex = /\[pagecontent\](.*?)\[\/pagecontent\]/gs;
     const match = tagRegex.exec(originalContent);
-    if (match) {
+    const hasTag = !!match;
+    if (hasTag) {
       contentToProcess = match[1];
     }
 
@@ -414,29 +415,54 @@ router.post('/dry-run', requireAuth, async (req, res) => {
       contentToProcess = contentToProcess.substring(0, MAX_CONTENT_LENGTH);
     }
 
-    // Process with AI (OpenAI or Gemini)
-    const promptWithContent = instance.prompt.replace(/\{\{FIELD_VALUE\}\}/g, contentToProcess);
+    // ===== PASS 1: Language Filtering =====
+    const enableTwoPass = instance.enable_two_pass !== false;
+    const languagesToRemove = (instance.languages_to_remove || 'en').split(',').map(l => l.trim());
 
-    console.log(`Sending to ${instance.generative_model_name} for dry run...`);
+    let pass1Result = null;
+    let needsAI = true;
+    let contentForAI = contentToProcess;
 
-    const aiResult = await withTimeout(
-      withRetry(async () => {
-        return await callAIService(
-          instance.generative_model_name,
-          [{ role: 'user', content: promptWithContent }],
-          0.3
-        );
-      }),
-      OPENAI_TIMEOUT,
-      'AI request timeout - the prompt may be too long or the service is slow'
-    );
+    if (enableTwoPass) {
+      console.log(`Pass 1: Removing languages: ${languagesToRemove.join(', ')}`);
+      pass1Result = removeLanguageSentences(contentToProcess, languagesToRemove);
+      needsAI = pass1Result.stats.percentRemaining > CLEAN_THRESHOLD;
+      contentForAI = pass1Result.cleanedText;
 
-    const processedContent = aiResult.choices[0].message.content.trim();
+      console.log(`Pass 1 complete: ${pass1Result.stats.sentencesRemoved} sentences removed (${Math.round((1 - pass1Result.stats.percentRemaining) * 100)}%)`);
+      console.log(`AI needed: ${needsAI ? 'YES' : 'NO'} (${Math.round(pass1Result.stats.percentRemaining * 100)}% content remaining)`);
+    }
 
-    // Generate embedding for processed content
+    // ===== PASS 2: AI Processing (if needed) =====
+    let processedContent = contentForAI;
+    let aiSkipped = !needsAI;
+
+    if (needsAI) {
+      const promptWithContent = instance.prompt.replace(/\{\{FIELD_VALUE\}\}/g, contentForAI);
+      console.log(`Pass 2: Sending to ${instance.generative_model_name} for AI processing...`);
+
+      const aiResult = await withTimeout(
+        withRetry(async () => {
+          return await callAIService(
+            instance.generative_model_name,
+            [{ role: 'user', content: promptWithContent }],
+            0.3
+          );
+        }),
+        OPENAI_TIMEOUT,
+        'AI request timeout - the prompt may be too long or the service is slow'
+      );
+
+      processedContent = aiResult.choices[0].message.content.trim();
+      console.log('Pass 2 complete: AI processing done');
+    } else {
+      console.log('Pass 2 skipped: Content sufficiently cleaned by Pass 1');
+    }
+
+    // Generate embedding for final content
     let embedding = null;
     if (instance.vector_field_name) {
-      console.log('Generating embedding for processed content...');
+      console.log('Generating embedding for final content...');
       const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
       const embeddingResult = await withTimeout(
         withRetry(async () => {
@@ -445,29 +471,67 @@ router.post('/dry-run', requireAuth, async (req, res) => {
             input: processedContent
           });
         }),
-        60000, // 60 second timeout for embeddings (OpenAI can be slow)
+        60000,
         'Embedding generation timeout - OpenAI took longer than 60 seconds'
       );
       embedding = embeddingResult.data[0].embedding;
       console.log(`Embedding generated: ${embedding.length} dimensions`);
     }
 
-    // Return before/after comparison
+    // Return comprehensive two-pass results
     console.log('Dry run complete, sending response');
     res.json({
       success: true,
-      before: {
+      record_id: record[instance.primary_key_field],
+      two_pass_enabled: enableTwoPass,
+
+      original: {
         content: contentToProcess,
-        record_id: record[instance.primary_key_field]
+        length: contentToProcess.length,
+        had_tags: hasTag
       },
-      after: {
+
+      pass1: enableTwoPass ? {
+        enabled: true,
+        languages_removed: languagesToRemove,
+        stats: {
+          sentences_total: pass1Result.stats.sentencesOriginal,
+          sentences_english: pass1Result.stats.englishSentences,
+          sentences_other: pass1Result.stats.nonEnglishSentences,
+          sentences_removed: pass1Result.stats.sentencesRemoved,
+          sentences_kept: pass1Result.stats.sentencesKept,
+          chars_original: pass1Result.stats.original,
+          chars_after_filtering: pass1Result.stats.cleaned,
+          chars_removed: pass1Result.stats.removed,
+          percent_remaining: Math.round(pass1Result.stats.percentRemaining * 100)
+        },
+        cleaned_content: pass1Result.cleanedText,
+        fully_cleaned: !needsAI
+      } : {
+        enabled: false,
+        message: 'Two-pass processing disabled for this instance'
+      },
+
+      pass2: {
+        needed: needsAI,
+        skipped: aiSkipped,
+        model_used: needsAI ? instance.generative_model_name : null,
+        content: needsAI ? processedContent : null,
+        reason: aiSkipped ? `Content ${Math.round(pass1Result.stats.percentRemaining * 100)}% remaining after Pass 1 (threshold: ${CLEAN_THRESHOLD * 100}%)` : null
+      },
+
+      final: {
         content: processedContent,
-        embedding_dimensions: embedding ? embedding.length : null
+        length: processedContent.length,
+        embedding_dimensions: embedding ? embedding.length : null,
+        processing_path: aiSkipped ? 'Pass 1 only (programmatic)' : 'Pass 1 + Pass 2 (AI)'
       },
+
       metadata: {
-        model: instance.generative_model_name,
         embedding_model: instance.embedding_model_name,
-        prompt_used: instance.prompt
+        prompt_used: instance.prompt,
+        clean_threshold: CLEAN_THRESHOLD,
+        max_content_length: MAX_CONTENT_LENGTH
       }
     });
     console.log('Dry run response sent successfully');
