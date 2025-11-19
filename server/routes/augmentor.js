@@ -10,10 +10,10 @@ import { requireAuth } from '../middleware/auth.js';
 const router = express.Router();
 
 const BATCH_SIZE = 5; // Increased from 2 for better performance on Railway
-const MAX_CONTENT_LENGTH = 8000; // Reduced from 12000 for faster processing
+const MAX_CONTENT_LENGTH = 100000; // Increased to handle larger content (max seen: 62k chars)
 const OPENAI_TIMEOUT = 120000; // 120 seconds
 const MAX_RETRIES = 3;
-const CLEAN_THRESHOLD = 0.15; // If <15% of content remains after language removal, consider it "clean"
+const CLEAN_THRESHOLD = 0.15; // If <15% of content remains after language removal, consider it "clean" (skip AI)
 
 // Language codes that franc can detect
 // https://github.com/wooorm/franc/blob/main/packages/franc/support.md
