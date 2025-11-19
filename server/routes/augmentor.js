@@ -568,6 +568,24 @@ router.post('/dry-run', requireAuth, async (req, res) => {
       record_id: record[instance.primary_key_field],
       two_pass_enabled: enableTwoPass,
 
+      // Backward compatibility for existing UI
+      before: {
+        content: contentToProcess,
+        record_id: record[instance.primary_key_field]
+      },
+
+      after: {
+        content: processedContent,
+        embedding_dimensions: embedding ? embedding.length : null
+      },
+
+      metadata: {
+        model: needsAI ? instance.generative_model_name : 'Pass 1 only (no AI)',
+        embedding_model: instance.embedding_model_name,
+        prompt_used: instance.prompt
+      },
+
+      // Detailed two-pass breakdown (new fields)
       original: {
         content: contentToProcess,
         length: contentToProcess.length,
@@ -607,13 +625,6 @@ router.post('/dry-run', requireAuth, async (req, res) => {
         length: processedContent.length,
         embedding_dimensions: embedding ? embedding.length : null,
         processing_path: aiSkipped ? 'Pass 1 only (programmatic)' : 'Pass 1 + Pass 2 (AI)'
-      },
-
-      metadata: {
-        embedding_model: instance.embedding_model_name,
-        prompt_used: instance.prompt,
-        clean_threshold: CLEAN_THRESHOLD,
-        max_content_length: MAX_CONTENT_LENGTH
       }
     });
     console.log('Dry run response sent successfully');
