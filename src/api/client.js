@@ -98,6 +98,13 @@ export const jobsApi = {
     });
     return result;
   },
+
+  delete: async (job_id) => {
+    const result = await apiRequest(`/jobs/${job_id}`, {
+      method: 'DELETE',
+    });
+    return result;
+  },
 };
 
 export default {

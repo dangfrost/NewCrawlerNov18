@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
-import { Activity, CheckCircle, XCircle, Clock, Ban, RefreshCw, AlertTriangle, ChevronDown, LogIn } from "lucide-react";
+import { Activity, CheckCircle, XCircle, Clock, Ban, RefreshCw, AlertTriangle, ChevronDown, LogIn, Trash2 } from "lucide-react";
 import { format, formatDistanceToNow, parseISO } from "date-fns";
 import { useToast } from "@/components/ui/use-toast";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -122,6 +122,27 @@ export default function JobsPage() {
     }
   };
 
+  const handleDeleteJob = async (jobId, jobName) => {
+    if (!window.confirm(`Are you sure you want to delete this job and all its logs?\n\nJob: ${jobName}`)) return;
+    try {
+      await jobsApi.delete(jobId);
+      toast({
+        title: "🗑️ Job Deleted",
+        description: "Job and all associated logs have been removed.",
+        duration: 3000,
+      });
+      loadData(true);
+    } catch (error) {
+      console.error("Failed to delete job:", error);
+      toast({
+        title: "❌ Cannot Delete Job",
+        description: error.message || "Unable to delete. Please try again.",
+        variant: "destructive",
+        duration: 6000,
+      });
+    }
+  };
+
   const getStatusInfo = (status) => {
     switch (status) {
       case 'completed': return { color: 'green', icon: CheckCircle };
@@ -217,6 +238,20 @@ export default function JobsPage() {
                                 Stop
                             </Button>
                          )}
+                         {!isCancellable && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteJob(job.id, getInstanceName(job.instance_id));
+                              }}
+                              className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                            >
+                                <Trash2 className="w-4 h-4 mr-2"/>
+                                Delete
+                            </Button>
+                         )}
                         <Badge variant="outline" className={`border-${color}-300 bg-${color}-50 text-${color}-800 text-sm`}>
                           <Icon className={`w-4 h-4 mr-2 ${job.status === 'running' ? 'animate-spin' : ''}`} />
                           {job.status}
@@ -253,7 +288,12 @@ export default function JobsPage() {
                       </div>
                        <div className="p-2 bg-slate-100 rounded-md">
                         <p className="font-bold text-lg text-slate-800">{job.total_records || 0}</p>
-                        <p className="font-medium text-slate-600">Total</p>
+                        <p className="font-medium text-slate-600">In Scope</p>
+                        {job.all_records_count && job.all_records_count > job.total_records && (
+                          <p className="text-xs text-slate-500 mt-1">
+                            of {job.all_records_count} total
+                          </p>
+                        )}
                       </div>
                     </div>
                     {isExpanded && renderJobDetails(job)}

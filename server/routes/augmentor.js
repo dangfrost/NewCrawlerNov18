@@ -807,30 +807,59 @@ export async function processBatch(jobId, currentRetry = 0) {
     console.log(`[Batch] Initial totalRecordsToProcess from job.total_records: ${totalRecordsToProcess}`);
 
     if (job.status === 'pending') {
-      // Get total record count from Zilliz
-      await addLog('Counting total records in collection...');
-      const countQuery = {
+      // Get BOTH total record count AND filtered count
+      await addLog('Counting records in collection...');
+
+      // First, count ALL records (no filter)
+      const allRecordsQuery = {
         collectionName: instance.collection_name,
-        filter: instance.query_filter || '',
+        filter: '', // No filter - count everything
         offset: 0,
-        limit: 1, // We just need the count, not the actual records
+        limit: 16384, // Zilliz max limit
         outputFields: [instance.primary_key_field]
       };
 
+      const allRecordsResponse = await zillizApiCall(
+        instance.zilliz_endpoint,
+        instance.zilliz_token,
+        '/v2/vectordb/entities/query',
+        allRecordsQuery
+      );
+      const totalAllRecords = allRecordsResponse.data?.length || 0;
+
+      // Then count filtered records (in scope)
+      const filteredQuery = {
+        collectionName: instance.collection_name,
+        filter: instance.query_filter || '',
+        offset: 0,
+        limit: 16384, // Zilliz max limit
+        outputFields: [instance.primary_key_field, 'changed_flag']
+      };
+
       try {
-        // Query with max limit to get all matching records
-        const countQueryLarge = {
-          ...countQuery,
-          limit: 16384 // Zilliz max limit
-        };
-        const countResponse = await zillizApiCall(
+        const filteredResponse = await zillizApiCall(
           instance.zilliz_endpoint,
           instance.zilliz_token,
           '/v2/vectordb/entities/query',
-          countQueryLarge
+          filteredQuery
         );
-        totalRecordsToProcess = countResponse.data?.length || 0;
-        await addLog(`Total records to process: ${totalRecordsToProcess}`);
+        totalRecordsToProcess = filteredResponse.data?.length || 0;
+
+        await addLog(`📊 Collection Stats:`);
+        await addLog(`  • All records in collection: ${totalAllRecords}`);
+        await addLog(`  • Records matching filter: ${totalRecordsToProcess}`);
+        await addLog(`  • Records to skip (already done): ${totalAllRecords - totalRecordsToProcess}`);
+        await addLog(`  • Filter being used: "${instance.query_filter || 'no filter'}"`);
+
+        // Debug: Check changed_flag distribution
+        if (filteredResponse.data && filteredResponse.data.length > 0) {
+          const flagStats = filteredResponse.data.reduce((acc, r) => {
+            const flag = r.changed_flag || 'not_set';
+            acc[flag] = (acc[flag] || 0) + 1;
+            return acc;
+          }, {});
+          await addLog(`  • Changed_flag distribution in scope: ${JSON.stringify(flagStats)}`);
+        }
 
         // Update job with total count
         await db.update(jobs)
@@ -853,6 +882,7 @@ export async function processBatch(jobId, currentRetry = 0) {
 
     // Fetch batch
     await addLog(`Fetching batch at offset ${job.current_batch_offset} (batch size: ${BATCH_SIZE})`);
+    await addLog(`Using filter: "${instance.query_filter || 'no filter'}"`);
 
     const queryBody = {
       collectionName: instance.collection_name,
@@ -871,6 +901,16 @@ export async function processBatch(jobId, currentRetry = 0) {
 
     const records = queryResponse.data || [];
     await addLog(`Fetched ${records.length} records`);
+
+    // Debug: Check changed_flag values in fetched records
+    if (records.length > 0) {
+      const flagCounts = records.reduce((acc, r) => {
+        const flag = r.changed_flag || 'null';
+        acc[flag] = (acc[flag] || 0) + 1;
+        return acc;
+      }, {});
+      await addLog(`Changed_flag values in batch: ${JSON.stringify(flagCounts)}`);
+    }
 
     if (records.length === 0) {
       await db.update(jobs)
@@ -1275,7 +1315,7 @@ export async function processBatch(jobId, currentRetry = 0) {
         );
 
         successCount++;
-        await addLog(`Record ${recordId}: ✓ Complete`);
+        await addLog(`Record ${recordId}: ✓ Complete (changed_flag set to 'done')`);
 
       } catch (error) {
         failCount++;

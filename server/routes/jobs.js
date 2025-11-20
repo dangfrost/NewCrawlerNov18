@@ -66,6 +66,31 @@ router.get('/:job_id/logs', requireAuth, async (req, res) => {
   }
 });
 
+// Delete job and all its logs
+router.delete('/:id', requireAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const db = getDb();
+
+    // Check if job exists
+    const [job] = await db.select().from(jobs).where(eq(jobs.id, id));
+    if (!job) {
+      return res.status(404).json({ error: 'Job not found' });
+    }
+
+    // Delete all job logs first (foreign key constraint)
+    await db.delete(jobLogs).where(eq(jobLogs.job_id, id));
+
+    // Delete the job
+    await db.delete(jobs).where(eq(jobs.id, id));
+
+    res.json({ success: true, message: 'Job and all logs deleted' });
+  } catch (error) {
+    console.error('Delete job error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Cancel job
 router.post('/:job_id/cancel', requireAuth, async (req, res) => {
   try {
