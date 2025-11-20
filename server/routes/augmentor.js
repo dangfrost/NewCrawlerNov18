@@ -997,8 +997,8 @@ export async function processBatch(jobId, currentRetry = 0) {
               const timeoutMs = Math.max(
                 30000, // Minimum 30 seconds
                 Math.min(
-                  120000, // Maximum 120 seconds
-                  Math.round(contentSize * 4) // ~4ms per character
+                  180000, // Maximum 180 seconds (3 minutes)
+                  Math.round(contentSize * 6) // ~6ms per character (increased from 4ms)
                 )
               );
 
