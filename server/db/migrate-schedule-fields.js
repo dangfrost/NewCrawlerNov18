@@ -3,9 +3,6 @@
 
 import { drizzle } from 'drizzle-orm/neon-http';
 import { neon } from '@neondatabase/serverless';
-import dotenv from 'dotenv';
-
-dotenv.config({ path: '../../.env' });
 
 if (!process.env.DATABASE_URL) {
   console.error('DATABASE_URL is not set in environment variables');
@@ -22,32 +19,34 @@ async function migrate() {
     // Add new columns to database_instances table
     await sql`
       ALTER TABLE database_instances
-      ADD COLUMN IF NOT EXISTS schedule_type TEXT DEFAULT 'disabled',
-      ADD COLUMN IF NOT EXISTS schedule_day_of_week INTEGER DEFAULT 1,
-      ADD COLUMN IF NOT EXISTS schedule_hour INTEGER DEFAULT 9,
-      ADD COLUMN IF NOT EXISTS schedule_minute INTEGER DEFAULT 0
+      ADD COLUMN IF NOT EXISTS schedule_enabled BOOLEAN DEFAULT false,
+      ADD COLUMN IF NOT EXISTS schedule_days TEXT,
+      ADD COLUMN IF NOT EXISTS schedule_frequency TEXT DEFAULT 'once_daily',
+      ADD COLUMN IF NOT EXISTS schedule_hours_interval INTEGER DEFAULT 4,
+      ADD COLUMN IF NOT EXISTS schedule_time TEXT DEFAULT '09:00',
+      ADD COLUMN IF NOT EXISTS schedule_time_second TEXT DEFAULT '21:00'
     `;
 
     console.log('✅ Added new scheduling columns successfully');
 
-    // Update existing records to set schedule_type based on schedule_interval
+    // Convert any existing schedules
     await sql`
       UPDATE database_instances
-      SET schedule_type = CASE
-        WHEN schedule_interval > 0 THEN 'minutes'
-        ELSE 'disabled'
+      SET schedule_enabled = CASE
+        WHEN schedule_interval > 0 OR (schedule_type IS NOT NULL AND schedule_type != 'disabled')
+        THEN true
+        ELSE false
       END
-      WHERE schedule_type IS NULL OR schedule_type = 'disabled'
     `;
 
-    console.log('✅ Updated existing records with appropriate schedule_type');
+    console.log('✅ Updated existing records with schedule_enabled');
 
     // Verify the migration
     const result = await sql`
       SELECT column_name, data_type, column_default
       FROM information_schema.columns
       WHERE table_name = 'database_instances'
-      AND column_name IN ('schedule_type', 'schedule_day_of_week', 'schedule_hour', 'schedule_minute')
+      AND column_name IN ('schedule_enabled', 'schedule_days', 'schedule_frequency', 'schedule_hours_interval', 'schedule_time', 'schedule_time_second')
       ORDER BY column_name
     `;
 

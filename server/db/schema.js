@@ -27,11 +27,22 @@ export const databaseInstances = pgTable('database_instances', {
   enable_two_pass: boolean('enable_two_pass').default(true), // Enable programmatic + AI passes
 
   status: text('status').notNull().default('active'), // 'active' | 'paused' | 'error'
+
+  // New scheduling fields
+  schedule_enabled: boolean('schedule_enabled').default(false),
+  schedule_days: text('schedule_days'), // JSON array: ['monday', 'tuesday', etc.]
+  schedule_frequency: text('schedule_frequency').default('once_daily'), // 'once_daily' | 'twice_daily' | 'every_x_hours' | 'hourly'
+  schedule_hours_interval: integer('schedule_hours_interval').default(4), // For every X hours
+  schedule_time: text('schedule_time').default('09:00'), // Time format HH:MM
+  schedule_time_second: text('schedule_time_second').default('21:00'), // Second time for twice daily
+
+  // Legacy scheduling fields (kept for backward compatibility)
   schedule_interval: integer('schedule_interval').default(0),
-  schedule_type: text('schedule_type').default('disabled'), // 'disabled' | 'minutes' | 'daily' | 'weekly'
-  schedule_day_of_week: integer('schedule_day_of_week').default(1), // 0=Sunday, 6=Saturday
-  schedule_hour: integer('schedule_hour').default(9), // 0-23
-  schedule_minute: integer('schedule_minute').default(0), // 0-59
+  schedule_type: text('schedule_type').default('disabled'),
+  schedule_day_of_week: integer('schedule_day_of_week').default(1),
+  schedule_hour: integer('schedule_hour').default(9),
+  schedule_minute: integer('schedule_minute').default(0),
+
   last_run: timestamp('last_run'),
   top_k: integer('top_k').default(5),
 });

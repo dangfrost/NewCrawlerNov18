@@ -8,7 +8,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Database, Bot, Key, Clock, Search } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
+import { Database, Bot, Key, Clock, Search, Calendar } from "lucide-react";
 
 const AI_OPERATIONS = [
   { value: 'strip_english', label: 'Strip English Words', description: 'Remove English words from text field' },
@@ -51,11 +53,12 @@ export default function CreateInstanceDialog({ open, onOpenChange, onSave, initi
     prompt: DEFAULT_PROMPTS.strip_english,
     embedding_model_name: 'text-embedding-3-large', // Changed default
     generative_model_name: 'gpt-4o', // Default to latest model with good balance
-    schedule_interval: 0,
-    schedule_type: 'disabled', // 'disabled', 'minutes', 'daily', 'weekly'
-    schedule_day_of_week: 1, // 0=Sunday, 1=Monday, etc.
-    schedule_hour: 9, // Hour of day (0-23)
-    schedule_minute: 0, // Minute of hour (0-59)
+    schedule_enabled: false,
+    schedule_days: [], // Array of days: ['monday', 'tuesday', etc.]
+    schedule_frequency: 'daily', // 'hourly', 'daily', 'twice_daily', 'every_x_hours'
+    schedule_hours_interval: 4, // For every X hours
+    schedule_time: '09:00', // For daily/twice daily runs
+    schedule_time_second: '21:00', // For twice daily second run
     top_k: 5,
   });
 
@@ -72,13 +75,14 @@ export default function CreateInstanceDialog({ open, onOpenChange, onSave, initi
         primary_key_field: initialData.primary_key_field || 'id',
         prompt: initialData.prompt || DEFAULT_PROMPTS[initialData.ai_operation] || '',
         vector_field_name: initialData.vector_field_name || '',
-        embedding_model_name: initialData.embedding_model_name || 'text-embedding-3-large', // Initialize from initialData or new default
-        generative_model_name: initialData.generative_model_name || 'gpt-4o', // Initialize from initialData or default to latest model
-        schedule_interval: initialData.schedule_interval || 0,
-        schedule_type: initialData.schedule_type || (initialData.schedule_interval > 0 ? 'minutes' : 'disabled'),
-        schedule_day_of_week: initialData.schedule_day_of_week || 1,
-        schedule_hour: initialData.schedule_hour || 9,
-        schedule_minute: initialData.schedule_minute || 0,
+        embedding_model_name: initialData.embedding_model_name || 'text-embedding-3-large',
+        generative_model_name: initialData.generative_model_name || 'gpt-4o',
+        schedule_enabled: initialData.schedule_enabled || false,
+        schedule_days: initialData.schedule_days || [],
+        schedule_frequency: initialData.schedule_frequency || 'daily',
+        schedule_hours_interval: initialData.schedule_hours_interval || 4,
+        schedule_time: initialData.schedule_time || '09:00',
+        schedule_time_second: initialData.schedule_time_second || '21:00',
         top_k: initialData.top_k || 5,
       });
     } else {
@@ -97,13 +101,14 @@ export default function CreateInstanceDialog({ open, onOpenChange, onSave, initi
         vector_field_name: '',
         ai_operation: 'strip_english',
         prompt: DEFAULT_PROMPTS.strip_english,
-        embedding_model_name: 'text-embedding-3-large', // New default
-        generative_model_name: 'gpt-4o', // Default to latest model with good balance
-        schedule_interval: 0,
-        schedule_type: 'disabled',
-        schedule_day_of_week: 1,
-        schedule_hour: 9,
-        schedule_minute: 0,
+        embedding_model_name: 'text-embedding-3-large',
+        generative_model_name: 'gpt-4o',
+        schedule_enabled: false,
+        schedule_days: [],
+        schedule_frequency: 'daily',
+        schedule_hours_interval: 4,
+        schedule_time: '09:00',
+        schedule_time_second: '21:00',
         top_k: 5,
       });
     }
@@ -138,13 +143,14 @@ export default function CreateInstanceDialog({ open, onOpenChange, onSave, initi
         // Reset fields that are specific to one type or another
         prompt: value === 'augmentor' ? DEFAULT_PROMPTS.strip_english : '',
         ai_operation: value === 'augmentor' ? 'strip_english' : '',
-        query_filter: value === 'augmentor' ? '' : prev.query_filter, // Keep existing if not augmentor, but clear if switching to it and it's not default
+        query_filter: value === 'augmentor' ? '' : prev.query_filter,
         target_field: value === 'augmentor' ? '' : prev.target_field,
-        schedule_interval: value === 'augmentor' ? 0 : prev.schedule_interval,
-        schedule_type: value === 'augmentor' ? 'disabled' : prev.schedule_type,
-        schedule_day_of_week: value === 'augmentor' ? 1 : prev.schedule_day_of_week,
-        schedule_hour: value === 'augmentor' ? 9 : prev.schedule_hour,
-        schedule_minute: value === 'augmentor' ? 0 : prev.schedule_minute,
+        schedule_enabled: value === 'augmentor' ? false : prev.schedule_enabled,
+        schedule_days: value === 'augmentor' ? [] : prev.schedule_days,
+        schedule_frequency: value === 'augmentor' ? 'daily' : prev.schedule_frequency,
+        schedule_hours_interval: value === 'augmentor' ? 4 : prev.schedule_hours_interval,
+        schedule_time: value === 'augmentor' ? '09:00' : prev.schedule_time,
+        schedule_time_second: value === 'augmentor' ? '21:00' : prev.schedule_time_second,
         top_k: value === 'query' ? 5 : prev.top_k,
     }));
   }
@@ -468,131 +474,172 @@ export default function CreateInstanceDialog({ open, onOpenChange, onSave, initi
             <Card>
                 <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-lg">
-                    <Clock className="w-5 h-5" />
+                    <Calendar className="w-5 h-5" />
                     Scheduling
                 </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                <div>
-                    <Label htmlFor="schedule_type">Schedule Type</Label>
-                    <Select value={formData.schedule_type} onValueChange={(value) => handleChange('schedule_type', value)}>
-                    <SelectTrigger>
-                        <SelectValue placeholder="Select schedule type" />
-                    </SelectTrigger>
-                    <SelectContent>
-                        <SelectItem value="disabled">Disabled - No automatic runs</SelectItem>
-                        <SelectItem value="minutes">Every X minutes</SelectItem>
-                        <SelectItem value="daily">Daily at specific time</SelectItem>
-                        <SelectItem value="weekly">Weekly on specific day</SelectItem>
-                    </SelectContent>
-                    </Select>
-                </div>
-
-                {/* Minutes interval */}
-                {formData.schedule_type === 'minutes' && (
-                    <div>
-                    <Label htmlFor="schedule_interval">Interval (minutes)</Label>
-                    <Input
-                        id="schedule_interval"
-                        type="number"
-                        value={formData.schedule_interval}
-                        onChange={(e) => handleChange('schedule_interval', parseInt(e.target.value, 10) || 0)}
-                        placeholder="e.g., 60 for every hour"
-                        min="1"
-                    />
-                    <p className="text-xs text-slate-500 mt-2">
-                        Run every {formData.schedule_interval || 0} minutes
+                {/* Enable/Disable Toggle */}
+                <div className="flex items-center justify-between">
+                    <div className="space-y-0.5">
+                    <Label htmlFor="schedule_enabled">Enable Scheduling</Label>
+                    <p className="text-xs text-slate-500">
+                        Automatically run this instance on selected days
                     </p>
                     </div>
-                )}
+                    <Switch
+                    id="schedule_enabled"
+                    checked={formData.schedule_enabled}
+                    onCheckedChange={(checked) => handleChange('schedule_enabled', checked)}
+                    />
+                </div>
 
-                {/* Daily schedule */}
-                {formData.schedule_type === 'daily' && (
-                    <div className="grid grid-cols-2 gap-4">
+                {formData.schedule_enabled && (
+                    <>
+                    {/* Days of Week Selection */}
                     <div>
-                        <Label htmlFor="schedule_hour">Hour (0-23)</Label>
-                        <Input
-                        id="schedule_hour"
-                        type="number"
-                        value={formData.schedule_hour}
-                        onChange={(e) => handleChange('schedule_hour', Math.min(23, Math.max(0, parseInt(e.target.value, 10) || 0)))}
-                        min="0"
-                        max="23"
-                        />
-                    </div>
-                    <div>
-                        <Label htmlFor="schedule_minute">Minute (0-59)</Label>
-                        <Input
-                        id="schedule_minute"
-                        type="number"
-                        value={formData.schedule_minute}
-                        onChange={(e) => handleChange('schedule_minute', Math.min(59, Math.max(0, parseInt(e.target.value, 10) || 0)))}
-                        min="0"
-                        max="59"
-                        />
-                    </div>
-                    <div className="col-span-2">
-                        <p className="text-xs text-slate-500">
-                        Run daily at {String(formData.schedule_hour).padStart(2, '0')}:{String(formData.schedule_minute).padStart(2, '0')}
+                        <Label>Run on these days</Label>
+                        <div className="grid grid-cols-7 gap-2 mt-2">
+                        {[
+                            { value: 'sunday', label: 'Sun' },
+                            { value: 'monday', label: 'Mon' },
+                            { value: 'tuesday', label: 'Tue' },
+                            { value: 'wednesday', label: 'Wed' },
+                            { value: 'thursday', label: 'Thu' },
+                            { value: 'friday', label: 'Fri' },
+                            { value: 'saturday', label: 'Sat' },
+                        ].map((day) => (
+                            <div key={day.value} className="flex flex-col items-center gap-2">
+                            <Checkbox
+                                id={`day-${day.value}`}
+                                checked={formData.schedule_days.includes(day.value)}
+                                onCheckedChange={(checked) => {
+                                const newDays = checked
+                                    ? [...formData.schedule_days, day.value]
+                                    : formData.schedule_days.filter(d => d !== day.value);
+                                handleChange('schedule_days', newDays);
+                                }}
+                            />
+                            <label
+                                htmlFor={`day-${day.value}`}
+                                className="text-xs font-medium cursor-pointer"
+                            >
+                                {day.label}
+                            </label>
+                            </div>
+                        ))}
+                        </div>
+                        {formData.schedule_days.length === 0 && (
+                        <p className="text-xs text-amber-600 mt-2">
+                            ⚠️ Select at least one day
                         </p>
+                        )}
                     </div>
-                    </div>
-                )}
 
-                {/* Weekly schedule */}
-                {formData.schedule_type === 'weekly' && (
-                    <div className="space-y-4">
+                    {/* Frequency Selection */}
                     <div>
-                        <Label htmlFor="schedule_day_of_week">Day of Week</Label>
-                        <Select value={String(formData.schedule_day_of_week)} onValueChange={(value) => handleChange('schedule_day_of_week', parseInt(value, 10))}>
+                        <Label htmlFor="schedule_frequency">Frequency</Label>
+                        <Select
+                        value={formData.schedule_frequency}
+                        onValueChange={(value) => handleChange('schedule_frequency', value)}
+                        >
                         <SelectTrigger>
-                            <SelectValue placeholder="Select day" />
+                            <SelectValue placeholder="Select frequency" />
                         </SelectTrigger>
                         <SelectContent>
-                            <SelectItem value="0">Sunday</SelectItem>
-                            <SelectItem value="1">Monday</SelectItem>
-                            <SelectItem value="2">Tuesday</SelectItem>
-                            <SelectItem value="3">Wednesday</SelectItem>
-                            <SelectItem value="4">Thursday</SelectItem>
-                            <SelectItem value="5">Friday</SelectItem>
-                            <SelectItem value="6">Saturday</SelectItem>
+                            <SelectItem value="once_daily">Once per day</SelectItem>
+                            <SelectItem value="twice_daily">Twice per day</SelectItem>
+                            <SelectItem value="every_x_hours">Every X hours</SelectItem>
+                            <SelectItem value="hourly">Every hour</SelectItem>
                         </SelectContent>
                         </Select>
                     </div>
-                    <div className="grid grid-cols-2 gap-4">
+
+                    {/* Time Configuration Based on Frequency */}
+                    {formData.schedule_frequency === 'once_daily' && (
                         <div>
-                        <Label htmlFor="schedule_hour">Hour (0-23)</Label>
+                        <Label htmlFor="schedule_time">Run at time</Label>
                         <Input
-                            id="schedule_hour"
+                            id="schedule_time"
+                            type="time"
+                            value={formData.schedule_time}
+                            onChange={(e) => handleChange('schedule_time', e.target.value)}
+                        />
+                        <p className="text-xs text-slate-500 mt-1">
+                            Will run once per day at {formData.schedule_time}
+                        </p>
+                        </div>
+                    )}
+
+                    {formData.schedule_frequency === 'twice_daily' && (
+                        <div className="space-y-3">
+                        <div>
+                            <Label htmlFor="schedule_time">First run</Label>
+                            <Input
+                            id="schedule_time"
+                            type="time"
+                            value={formData.schedule_time}
+                            onChange={(e) => handleChange('schedule_time', e.target.value)}
+                            />
+                        </div>
+                        <div>
+                            <Label htmlFor="schedule_time_second">Second run</Label>
+                            <Input
+                            id="schedule_time_second"
+                            type="time"
+                            value={formData.schedule_time_second}
+                            onChange={(e) => handleChange('schedule_time_second', e.target.value)}
+                            />
+                        </div>
+                        <p className="text-xs text-slate-500">
+                            Will run at {formData.schedule_time} and {formData.schedule_time_second}
+                        </p>
+                        </div>
+                    )}
+
+                    {formData.schedule_frequency === 'every_x_hours' && (
+                        <div>
+                        <Label htmlFor="schedule_hours_interval">Run every X hours</Label>
+                        <Input
+                            id="schedule_hours_interval"
                             type="number"
-                            value={formData.schedule_hour}
-                            onChange={(e) => handleChange('schedule_hour', Math.min(23, Math.max(0, parseInt(e.target.value, 10) || 0)))}
-                            min="0"
+                            value={formData.schedule_hours_interval}
+                            onChange={(e) => handleChange('schedule_hours_interval', parseInt(e.target.value, 10) || 1)}
+                            min="1"
                             max="23"
                         />
+                        <p className="text-xs text-slate-500 mt-1">
+                            Will run every {formData.schedule_hours_interval} hour{formData.schedule_hours_interval !== 1 ? 's' : ''} on selected days
+                        </p>
                         </div>
-                        <div>
-                        <Label htmlFor="schedule_minute">Minute (0-59)</Label>
-                        <Input
-                            id="schedule_minute"
-                            type="number"
-                            value={formData.schedule_minute}
-                            onChange={(e) => handleChange('schedule_minute', Math.min(59, Math.max(0, parseInt(e.target.value, 10) || 0)))}
-                            min="0"
-                            max="59"
-                        />
-                        </div>
-                    </div>
-                    <p className="text-xs text-slate-500">
-                        Run weekly on {['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][formData.schedule_day_of_week]} at {String(formData.schedule_hour).padStart(2, '0')}:{String(formData.schedule_minute).padStart(2, '0')}
-                    </p>
-                    </div>
+                    )}
+
+                    {formData.schedule_frequency === 'hourly' && (
+                        <p className="text-xs text-slate-500">
+                        Will run every hour on selected days (24 times per day)
+                        </p>
+                    )}
+
+                    {/* Schedule Summary */}
+                    {formData.schedule_days.length > 0 && (
+                        <Alert className="bg-green-50 border-green-200">
+                        <AlertDescription className="text-xs">
+                            <strong>Schedule Summary:</strong> Will run {
+                            formData.schedule_frequency === 'once_daily' ? `once daily at ${formData.schedule_time}` :
+                            formData.schedule_frequency === 'twice_daily' ? `twice daily at ${formData.schedule_time} and ${formData.schedule_time_second}` :
+                            formData.schedule_frequency === 'every_x_hours' ? `every ${formData.schedule_hours_interval} hour${formData.schedule_hours_interval !== 1 ? 's' : ''}` :
+                            'every hour'
+                            } on {formData.schedule_days.map(d => d.charAt(0).toUpperCase() + d.slice(1)).join(', ')}.
+                        </AlertDescription>
+                        </Alert>
+                    )}
+                    </>
                 )}
 
-                {formData.schedule_type !== 'disabled' && (
+                {formData.schedule_enabled && (
                     <Alert className="bg-blue-50 border-blue-200">
                     <AlertDescription className="text-xs">
-                        The instance status must be 'Active' for the schedule to run. Scheduled jobs will run automatically based on your selected schedule.
+                        The instance status must be 'Active' for the schedule to run.
                     </AlertDescription>
                     </Alert>
                 )}
