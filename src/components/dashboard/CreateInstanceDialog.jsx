@@ -52,6 +52,10 @@ export default function CreateInstanceDialog({ open, onOpenChange, onSave, initi
     embedding_model_name: 'text-embedding-3-large', // Changed default
     generative_model_name: 'gpt-4o', // Default to latest model with good balance
     schedule_interval: 0,
+    schedule_type: 'disabled', // 'disabled', 'minutes', 'daily', 'weekly'
+    schedule_day_of_week: 1, // 0=Sunday, 1=Monday, etc.
+    schedule_hour: 9, // Hour of day (0-23)
+    schedule_minute: 0, // Minute of hour (0-59)
     top_k: 5,
   });
 
@@ -71,6 +75,10 @@ export default function CreateInstanceDialog({ open, onOpenChange, onSave, initi
         embedding_model_name: initialData.embedding_model_name || 'text-embedding-3-large', // Initialize from initialData or new default
         generative_model_name: initialData.generative_model_name || 'gpt-4o', // Initialize from initialData or default to latest model
         schedule_interval: initialData.schedule_interval || 0,
+        schedule_type: initialData.schedule_type || (initialData.schedule_interval > 0 ? 'minutes' : 'disabled'),
+        schedule_day_of_week: initialData.schedule_day_of_week || 1,
+        schedule_hour: initialData.schedule_hour || 9,
+        schedule_minute: initialData.schedule_minute || 0,
         top_k: initialData.top_k || 5,
       });
     } else {
@@ -92,6 +100,10 @@ export default function CreateInstanceDialog({ open, onOpenChange, onSave, initi
         embedding_model_name: 'text-embedding-3-large', // New default
         generative_model_name: 'gpt-4o', // Default to latest model with good balance
         schedule_interval: 0,
+        schedule_type: 'disabled',
+        schedule_day_of_week: 1,
+        schedule_hour: 9,
+        schedule_minute: 0,
         top_k: 5,
       });
     }
@@ -129,6 +141,10 @@ export default function CreateInstanceDialog({ open, onOpenChange, onSave, initi
         query_filter: value === 'augmentor' ? '' : prev.query_filter, // Keep existing if not augmentor, but clear if switching to it and it's not default
         target_field: value === 'augmentor' ? '' : prev.target_field,
         schedule_interval: value === 'augmentor' ? 0 : prev.schedule_interval,
+        schedule_type: value === 'augmentor' ? 'disabled' : prev.schedule_type,
+        schedule_day_of_week: value === 'augmentor' ? 1 : prev.schedule_day_of_week,
+        schedule_hour: value === 'augmentor' ? 9 : prev.schedule_hour,
+        schedule_minute: value === 'augmentor' ? 0 : prev.schedule_minute,
         top_k: value === 'query' ? 5 : prev.top_k,
     }));
   }
@@ -458,19 +474,128 @@ export default function CreateInstanceDialog({ open, onOpenChange, onSave, initi
                 </CardHeader>
                 <CardContent className="space-y-4">
                 <div>
-                    <Label htmlFor="schedule_interval">Schedule Interval (minutes)</Label>
+                    <Label htmlFor="schedule_type">Schedule Type</Label>
+                    <Select value={formData.schedule_type} onValueChange={(value) => handleChange('schedule_type', value)}>
+                    <SelectTrigger>
+                        <SelectValue placeholder="Select schedule type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="disabled">Disabled - No automatic runs</SelectItem>
+                        <SelectItem value="minutes">Every X minutes</SelectItem>
+                        <SelectItem value="daily">Daily at specific time</SelectItem>
+                        <SelectItem value="weekly">Weekly on specific day</SelectItem>
+                    </SelectContent>
+                    </Select>
+                </div>
+
+                {/* Minutes interval */}
+                {formData.schedule_type === 'minutes' && (
+                    <div>
+                    <Label htmlFor="schedule_interval">Interval (minutes)</Label>
                     <Input
-                    id="schedule_interval"
-                    type="number"
-                    value={formData.schedule_interval}
-                    onChange={(e) => handleChange('schedule_interval', parseInt(e.target.value, 10) || 0)}
-                    placeholder="e.g., 60 for every hour"
+                        id="schedule_interval"
+                        type="number"
+                        value={formData.schedule_interval}
+                        onChange={(e) => handleChange('schedule_interval', parseInt(e.target.value, 10) || 0)}
+                        placeholder="e.g., 60 for every hour"
+                        min="1"
                     />
                     <p className="text-xs text-slate-500 mt-2">
-                    Set how often this instance should run automatically. Set to 0 to disable.
-                    The instance status must be 'Active' for the schedule to run.
+                        Run every {formData.schedule_interval || 0} minutes
                     </p>
-                </div>
+                    </div>
+                )}
+
+                {/* Daily schedule */}
+                {formData.schedule_type === 'daily' && (
+                    <div className="grid grid-cols-2 gap-4">
+                    <div>
+                        <Label htmlFor="schedule_hour">Hour (0-23)</Label>
+                        <Input
+                        id="schedule_hour"
+                        type="number"
+                        value={formData.schedule_hour}
+                        onChange={(e) => handleChange('schedule_hour', Math.min(23, Math.max(0, parseInt(e.target.value, 10) || 0)))}
+                        min="0"
+                        max="23"
+                        />
+                    </div>
+                    <div>
+                        <Label htmlFor="schedule_minute">Minute (0-59)</Label>
+                        <Input
+                        id="schedule_minute"
+                        type="number"
+                        value={formData.schedule_minute}
+                        onChange={(e) => handleChange('schedule_minute', Math.min(59, Math.max(0, parseInt(e.target.value, 10) || 0)))}
+                        min="0"
+                        max="59"
+                        />
+                    </div>
+                    <div className="col-span-2">
+                        <p className="text-xs text-slate-500">
+                        Run daily at {String(formData.schedule_hour).padStart(2, '0')}:{String(formData.schedule_minute).padStart(2, '0')}
+                        </p>
+                    </div>
+                    </div>
+                )}
+
+                {/* Weekly schedule */}
+                {formData.schedule_type === 'weekly' && (
+                    <div className="space-y-4">
+                    <div>
+                        <Label htmlFor="schedule_day_of_week">Day of Week</Label>
+                        <Select value={String(formData.schedule_day_of_week)} onValueChange={(value) => handleChange('schedule_day_of_week', parseInt(value, 10))}>
+                        <SelectTrigger>
+                            <SelectValue placeholder="Select day" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="0">Sunday</SelectItem>
+                            <SelectItem value="1">Monday</SelectItem>
+                            <SelectItem value="2">Tuesday</SelectItem>
+                            <SelectItem value="3">Wednesday</SelectItem>
+                            <SelectItem value="4">Thursday</SelectItem>
+                            <SelectItem value="5">Friday</SelectItem>
+                            <SelectItem value="6">Saturday</SelectItem>
+                        </SelectContent>
+                        </Select>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                        <Label htmlFor="schedule_hour">Hour (0-23)</Label>
+                        <Input
+                            id="schedule_hour"
+                            type="number"
+                            value={formData.schedule_hour}
+                            onChange={(e) => handleChange('schedule_hour', Math.min(23, Math.max(0, parseInt(e.target.value, 10) || 0)))}
+                            min="0"
+                            max="23"
+                        />
+                        </div>
+                        <div>
+                        <Label htmlFor="schedule_minute">Minute (0-59)</Label>
+                        <Input
+                            id="schedule_minute"
+                            type="number"
+                            value={formData.schedule_minute}
+                            onChange={(e) => handleChange('schedule_minute', Math.min(59, Math.max(0, parseInt(e.target.value, 10) || 0)))}
+                            min="0"
+                            max="59"
+                        />
+                        </div>
+                    </div>
+                    <p className="text-xs text-slate-500">
+                        Run weekly on {['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][formData.schedule_day_of_week]} at {String(formData.schedule_hour).padStart(2, '0')}:{String(formData.schedule_minute).padStart(2, '0')}
+                    </p>
+                    </div>
+                )}
+
+                {formData.schedule_type !== 'disabled' && (
+                    <Alert className="bg-blue-50 border-blue-200">
+                    <AlertDescription className="text-xs">
+                        The instance status must be 'Active' for the schedule to run. Scheduled jobs will run automatically based on your selected schedule.
+                    </AlertDescription>
+                    </Alert>
+                )}
                 </CardContent>
             </Card>
           )}

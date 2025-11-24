@@ -9,7 +9,7 @@ import { requireAuth } from '../middleware/auth.js';
 
 const router = express.Router();
 
-const BATCH_SIZE = 10; // Increased from 5 for better throughput
+const BATCH_SIZE = 25; // Increased for better throughput with parallel AI processing
 const MAX_CONTENT_LENGTH = 100000; // Increased to handle larger content (max seen: 62k chars)
 const OPENAI_TIMEOUT = 60000; // 60 seconds base timeout (30s was too aggressive for large content)
 const MAX_RETRIES = 3;
@@ -274,7 +274,7 @@ async function callAIService(modelName, messages, temperature = 0.3) {
       }).join('\n\n');
 
       // Log prompt details for debugging
-      console.log(`[Gemini] Prompt size: ${prompt.length} chars, Preview: ${prompt.substring(0, 200)}...`);
+      console.log(`[Gemini] Model: ${modelName}, Prompt size: ${prompt.length} chars`);
 
       const result = await model.generateContent(prompt);
       const response = await result.response;
@@ -1019,7 +1019,7 @@ export async function processBatch(jobId, currentRetry = 0) {
 
         // Adjust concurrency based on average content size
         const avgContentSize = combinedPromptSize / batchPrompts.length;
-        const concurrency = avgContentSize > 15000 ? 2 : 3; // Reduce concurrency for very large content
+        const concurrency = avgContentSize > 30000 ? 5 : 8; // Increased - Gemini handles high concurrency well
 
         // Use parallel processing with concurrency limit
         const limit = pLimit(concurrency);
@@ -1235,32 +1235,32 @@ export async function processBatch(jobId, currentRetry = 0) {
       return;
     }
 
-    // ===== UPDATE RECORDS IN ZILLIZ =====
+    // ===== UPDATE RECORDS IN ZILLIZ (Batched) =====
     let successCount = 0;
     let failCount = 0;
     let pass1CleanedCount = 0;
     let pass2ProcessedCount = 0;
-    let failedRecordDetails = []; // Track failed records for retry
+    let failedRecordDetails = [];
+
+    // Prepare all updated records first
+    const updatedRecords = [];
+    const recordIds = [];
 
     for (const r of recordsWithPass1) {
       const record = r.record;
       const recordId = record[instance.primary_key_field];
-
-      await addLog(`Record ${recordId}: Updating...`);
+      recordIds.push(recordId);
 
       try {
         // Determine final processed content
         let processedContent;
         if (aiResponsesByIdx[r.idx]) {
-          // Pass 2: AI processed
           processedContent = aiResponsesByIdx[r.idx];
           pass2ProcessedCount++;
         } else if (r.pass1Result) {
-          // Pass 1: Cleaned programmatically
           processedContent = r.pass1Result.cleanedText;
           pass1CleanedCount++;
         } else {
-          // No processing (two-pass disabled)
           processedContent = r.originalContent;
         }
 
@@ -1276,57 +1276,51 @@ export async function processBatch(jobId, currentRetry = 0) {
         const updatedRecord = {
           ...record,
           [instance.target_field]: updatedContent,
-          changed_flag: 'done' // Mark as processed
+          changed_flag: 'done'
         };
 
-        // Add pre-generated embedding
-        if (instance.vector_field_name) {
-          if (embeddingsByIdx[r.idx]) {
-            updatedRecord[instance.vector_field_name] = embeddingsByIdx[r.idx];
-            await addLog(`Record ${recordId}: Embedding added (${embeddingsByIdx[r.idx].length} dims)`);
-          } else {
-            // Don't fail the entire record, just skip the embedding
-            await addLog(`Record ${recordId}: Processing without embedding (generation failed)`, 'WARN');
-            // Optionally add a flag to retry later
-            updatedRecord.embedding_status = 'pending_retry';
-          }
+        // Add embedding if available
+        if (instance.vector_field_name && embeddingsByIdx[r.idx]) {
+          updatedRecord[instance.vector_field_name] = embeddingsByIdx[r.idx];
         }
 
-        // Delete old record
+        updatedRecords.push(updatedRecord);
+        successCount++;
+      } catch (error) {
+        failCount++;
+        failedRecordDetails.push({ recordId, error: error.message });
+      }
+    }
+
+    // Batch delete all old records
+    if (recordIds.length > 0) {
+      try {
+        const filterExpr = recordIds.map(id => `${instance.primary_key_field} == "${id}"`).join(' || ');
         await zillizApiCall(
           instance.zilliz_endpoint,
           instance.zilliz_token,
           '/v2/vectordb/entities/delete',
-          {
-            collectionName: instance.collection_name,
-            filter: `${instance.primary_key_field} == "${recordId}"`
-          }
+          { collectionName: instance.collection_name, filter: filterExpr }
         );
+      } catch (error) {
+        await addLog(`Batch delete failed: ${error.message}`, 'ERROR');
+      }
+    }
 
-        // Insert updated record
+    // Batch insert all updated records
+    if (updatedRecords.length > 0) {
+      try {
         await zillizApiCall(
           instance.zilliz_endpoint,
           instance.zilliz_token,
           '/v2/vectordb/entities/insert',
-          {
-            collectionName: instance.collection_name,
-            data: [updatedRecord]
-          }
+          { collectionName: instance.collection_name, data: updatedRecords }
         );
-
-        successCount++;
-        await addLog(`Record ${recordId}: ✓ Complete (changed_flag set to 'done')`);
-
+        await addLog(`✓ Batch updated ${updatedRecords.length} records in Zilliz`);
       } catch (error) {
-        failCount++;
-        await addLog(`Record ${recordId}: ✗ Failed - ${error.message}`, 'ERROR');
-
-        // Track failed record for potential retry
-        failedRecordDetails.push({
-          recordId,
-          error: error.message,
-          contentSize: (processedContent || '').length
-        });
+        await addLog(`Batch insert failed: ${error.message}`, 'ERROR');
+        failCount += updatedRecords.length;
+        successCount = 0;
       }
     }
 

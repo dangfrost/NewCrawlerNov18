@@ -1,7 +1,7 @@
 import cron from 'node-cron';
 import { getDb } from '../db/client.js';
 import { databaseInstances, jobs } from '../db/schema.js';
-import { eq, and, gt, or, isNull, inArray } from 'drizzle-orm';
+import { eq, and, gt, or, isNull, inArray, ne } from 'drizzle-orm';
 
 /**
  * Batch job worker for processing scheduled instances and resuming jobs
@@ -90,44 +90,109 @@ async function processScheduledInstances() {
   const now = new Date();
 
   try {
-    // Find active instances with schedule_interval > 0
-    // and (last_run is null OR last_run + interval < now)
+    // Find active instances that have scheduling enabled
     const instances = await db
       .select()
       .from(databaseInstances)
       .where(
         and(
           eq(databaseInstances.status, 'active'),
-          gt(databaseInstances.schedule_interval, 0)
+          or(
+            gt(databaseInstances.schedule_interval, 0), // Legacy: minutes interval
+            and(
+              databaseInstances.schedule_type ? ne(databaseInstances.schedule_type, 'disabled') : false
+            )
+          )
         )
       );
 
     if (instances.length === 0) {
-      console.log('No scheduled instances to process');
-      return;
+      return; // No scheduled instances to process
     }
 
-    console.log(`Found ${instances.length} scheduled instances to check`);
+    console.log(`Checking ${instances.length} scheduled instances`);
 
     for (const instance of instances) {
-      // Check if enough time has passed since last run
-      if (instance.last_run) {
-        const nextRun = new Date(instance.last_run);
-        nextRun.setMinutes(nextRun.getMinutes() + instance.schedule_interval);
+      const shouldRun = shouldInstanceRun(instance, now);
 
-        if (nextRun > now) {
-          console.log(`Instance ${instance.id} not ready yet. Next run: ${nextRun}`);
-          continue;
-        }
+      if (shouldRun) {
+        console.log(`Processing instance ${instance.id}: ${instance.name} (type: ${instance.schedule_type || 'minutes'})`);
+        await processInstance(instance);
       }
-
-      // Process this instance
-      console.log(`Processing instance ${instance.id}: ${instance.name}`);
-      await processInstance(instance);
     }
   } catch (error) {
     console.error('Error processing scheduled instances:', error);
     throw error;
+  }
+}
+
+/**
+ * Determine if an instance should run based on its schedule configuration
+ */
+function shouldInstanceRun(instance, now) {
+  // If no last run, it should run
+  if (!instance.last_run) {
+    return true;
+  }
+
+  const lastRun = new Date(instance.last_run);
+  const scheduleType = instance.schedule_type || 'minutes'; // Default to minutes for legacy
+
+  switch (scheduleType) {
+    case 'disabled':
+      return false;
+
+    case 'minutes':
+      // Legacy behavior: check if enough minutes have passed
+      const minuteInterval = instance.schedule_interval || 0;
+      if (minuteInterval <= 0) return false;
+
+      const nextRunMinutes = new Date(lastRun);
+      nextRunMinutes.setMinutes(nextRunMinutes.getMinutes() + minuteInterval);
+      return now >= nextRunMinutes;
+
+    case 'daily':
+      // Check if it's the right time today and hasn't run today yet
+      const todayScheduledTime = new Date(now);
+      todayScheduledTime.setHours(instance.schedule_hour || 9, instance.schedule_minute || 0, 0, 0);
+
+      // Has it already run today?
+      const lastRunDate = lastRun.toDateString();
+      const todayDate = now.toDateString();
+
+      if (lastRunDate === todayDate) {
+        return false; // Already ran today
+      }
+
+      // Is it past the scheduled time?
+      return now >= todayScheduledTime;
+
+    case 'weekly':
+      // Check if it's the right day and time
+      const currentDayOfWeek = now.getDay();
+      const scheduledDayOfWeek = instance.schedule_day_of_week || 1;
+
+      // Not the right day
+      if (currentDayOfWeek !== scheduledDayOfWeek) {
+        return false;
+      }
+
+      // Right day - check time
+      const todayWeeklyTime = new Date(now);
+      todayWeeklyTime.setHours(instance.schedule_hour || 9, instance.schedule_minute || 0, 0, 0);
+
+      // Has it already run this week? (within last 7 days on same weekday)
+      const daysSinceLastRun = Math.floor((now - lastRun) / (1000 * 60 * 60 * 24));
+      if (daysSinceLastRun < 7 && lastRun.getDay() === currentDayOfWeek) {
+        return false; // Already ran this week
+      }
+
+      // Is it past the scheduled time?
+      return now >= todayWeeklyTime;
+
+    default:
+      console.warn(`Unknown schedule type: ${scheduleType}`);
+      return false;
   }
 }
 

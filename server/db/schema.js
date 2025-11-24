@@ -28,6 +28,10 @@ export const databaseInstances = pgTable('database_instances', {
 
   status: text('status').notNull().default('active'), // 'active' | 'paused' | 'error'
   schedule_interval: integer('schedule_interval').default(0),
+  schedule_type: text('schedule_type').default('disabled'), // 'disabled' | 'minutes' | 'daily' | 'weekly'
+  schedule_day_of_week: integer('schedule_day_of_week').default(1), // 0=Sunday, 6=Saturday
+  schedule_hour: integer('schedule_hour').default(9), // 0-23
+  schedule_minute: integer('schedule_minute').default(0), // 0-59
   last_run: timestamp('last_run'),
   top_k: integer('top_k').default(5),
 });
